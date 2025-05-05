@@ -78,4 +78,8 @@ Emira compatibility is not tested but possible with some limitations.
 * Add support for SRS, TPMS modules.
 * Add support for module read/write.
 * Investigate support for newer vehicle architectures (e.g., Emira).
+ 
+## Changelog
+
+* 05/05/2025 - Initial developer release. Diagnostics of ECM/ABS units tested working on Exige V6S. Basic fixed function live data capture and CSV logging implemented. Full read of performance data implemented.
 

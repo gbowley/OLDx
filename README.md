@@ -73,6 +73,11 @@ Emira compatibility is not tested but possible with some limitations.
 * **Vehicle Coverage:** Primarily supports Lotus Elise, Exige, and Evora models based on the data in `vehicles.py`. Support for other models (like Emira V6) is not tested.
 * **Module Support:** While ECM, and ABS are currently tested, communication success can vary depending on the specific module variant and vehicle year. Some modules might require specific diagnostic sessions or protocols not fully implemented for all variants. I need to test the tool on more vehicles to confirm compatibility across more modules.
 * **Development Release:** This application is the result of a couple of days of development and tested on only one vehicle, as such it is highly likely that I have not accounted for various issues which may arise when the application is used on other vehicles.
+ 
+## Block Diagram
+
+![Block Diagram](https://github.com/user-attachments/assets/7a84ae91-8f00-4b2f-a7ca-92fd9c08e7fc)
+
 
 ## Planned Updates / Future Work
 

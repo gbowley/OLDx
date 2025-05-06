@@ -5,6 +5,8 @@
 
 This application provides diagnostic capabilities for Lotus vehicles by communicating directly with the CAN bus. It allows users to read and clear fault codes from modules, view live data streams, identify vehicle details via VIN, and retrieve performance metrics logged by the ECU.
 
+**Acknowledgements - [James Portman](https://github.com/james-portman) (Vehicle, Fault information), [Alcantor](https://github.com/Alcantor) (OBD information)**
+
 ## --- USE AT YOUR OWN RISK ---
 
 ## Compatibility

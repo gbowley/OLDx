@@ -5,18 +5,22 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 import csv
 import os
-import time 
+import time
 from datetime import datetime
-# Corrected typing imports
-from typing import Optional, Set, List, Dict, Any, Callable, TYPE_CHECKING, Union, TypeAlias
+from typing import Optional, Set, List, Dict, Any, Callable, TYPE_CHECKING, Union
 import queue # Moved queue import to global scope
+from typing_extensions import TypeAlias
 
 if TYPE_CHECKING:
     from can_communication import CanCommunication # ICanRawMessageProcessor is defined below
-    from can import Message as CanMessage_Actual # Import the actual type
-    CanGuiMessage: TypeAlias = CanMessage_Actual # Define TypeAlias if can is available
+    # Attempt to import the actual can.Message for type checking if 'can' package is available
+    try:
+        from can import Message as CanMessage_Actual # Import the actual type
+        CanGuiMessage: TypeAlias = CanMessage_Actual # Define TypeAlias if can is available
+    except ImportError:
+        CanGuiMessage: TypeAlias = Any # Fallback if 'can' package is not installed
 else:
-    # At runtime, or if 'can' is not installed for type checking, CanGuiMessage is Any
+    # At runtime, CanGuiMessage is Any to avoid import errors if 'can' is not installed
     CanGuiMessage: TypeAlias = Any
 
 
@@ -36,7 +40,7 @@ class CanExpert(ICanRawMessageProcessor):
         self.parent_frame = parent_frame
         self.can_comm = can_comm
         self.gui_queue = gui_queue
-        self.log_g = log_via_queue_callback 
+        self.log_g = log_via_queue_callback
 
         self.monitored_ids: Set[int] = set()
         self.is_monitoring: bool = False
@@ -48,7 +52,7 @@ class CanExpert(ICanRawMessageProcessor):
         # --- UI Elements ---
         self.id_send_var = tk.StringVar(value="7E0")
         self.data_send_var = tk.StringVar(value="02010D")
-        self.is_remote_frame_var = tk.BooleanVar(value=False) 
+        self.is_remote_frame_var = tk.BooleanVar(value=False)
         self.ids_monitor_var = tk.StringVar(value="7E8")
         self.send_button: Optional[ttk.Button] = None
         self.monitor_toggle_button: Optional[ttk.Button] = None
@@ -66,8 +70,8 @@ class CanExpert(ICanRawMessageProcessor):
         # --- Send Frame ---
         send_frame = ttk.LabelFrame(self.parent_frame, text="Send Custom CAN Message", padding="10")
         send_frame.pack(fill=tk.X, padx=5, pady=5)
-        send_frame.columnconfigure(1, weight=1) 
-        send_frame.columnconfigure(3, weight=2) 
+        send_frame.columnconfigure(1, weight=1)
+        send_frame.columnconfigure(3, weight=2)
 
         ttk.Label(send_frame, text="CAN ID (Hex):").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
         id_entry = ttk.Entry(send_frame, textvariable=self.id_send_var, width=10)
@@ -78,7 +82,7 @@ class CanExpert(ICanRawMessageProcessor):
         data_entry.grid(row=0, column=3, padx=5, pady=5, sticky=tk.EW)
 
         rtr_checkbutton = ttk.Checkbutton(send_frame, text="RTR", variable=self.is_remote_frame_var)
-        rtr_checkbutton.grid(row=0, column=4, padx=(10,5), pady=5, sticky=tk.W) 
+        rtr_checkbutton.grid(row=0, column=4, padx=(10,5), pady=5, sticky=tk.W)
 
         self.send_button = ttk.Button(send_frame, text="Send Message", command=self._handle_send_message, state=tk.DISABLED)
         self.send_button.grid(row=0, column=5, padx=10, pady=5, sticky=tk.E)
@@ -118,9 +122,9 @@ class CanExpert(ICanRawMessageProcessor):
         if self.monitor_toggle_button:
             if connected:
                 self.monitor_toggle_button.config(state=tk.NORMAL)
-            else: 
+            else:
                 if self.is_monitoring:
-                    self._stop_monitoring_logic() 
+                    self._stop_monitoring_logic()
                 self.monitor_toggle_button.config(state=tk.DISABLED, text="Start Monitoring")
 
 
@@ -134,15 +138,15 @@ class CanExpert(ICanRawMessageProcessor):
 
         try:
             arbitration_id = int(can_id_str, 16)
-            if not (0 <= arbitration_id <= 0x7FF) and not (0 <= arbitration_id <= 0x1FFFFFFF):
+            if not (0 <= arbitration_id <= 0x7FF) and not (0 <= arbitration_id <= 0x1FFFFFFF): # Basic check for std/ext
                  raise ValueError("CAN ID out of range for standard or extended.")
         except ValueError:
             messagebox.showerror("Input Error", f"Invalid CAN ID: '{can_id_str}'. Must be hex.", parent=self.parent_frame)
             return
 
-        data_bytes: bytes = b''
+        data_bytes: bytes = b'' # Ensure data_bytes is initialized
         try:
-            if can_data_str:
+            if can_data_str: # Only attempt conversion if string is not empty
                 data_bytes = bytes.fromhex(can_data_str)
             if len(data_bytes) > 8:
                 raise ValueError("Data length exceeds 8 bytes.")
@@ -151,16 +155,18 @@ class CanExpert(ICanRawMessageProcessor):
             return
         
         is_extended = arbitration_id > 0x7FF
-        is_remote = self.is_remote_frame_var.get() 
+        is_remote = self.is_remote_frame_var.get() # Get RTR status from checkbox
 
         if is_remote and data_bytes:
-            self._log_internal(f"Note: Sending Remote Frame (RTR=1). Data field ('{data_bytes.hex().upper()}') length will set requested DLC, but data itself is typically ignored.")
+            self._log_internal(f"Note: Sending Remote Frame (RTR=1). Data field ('{data_bytes.hex().upper()}') length will set requested DLC, but data itself is typically ignored by recipient for RTR.")
         elif is_remote and not data_bytes:
-             self._log_internal(f"Note: Sending Remote Frame (RTR=1) with no data. DLC will be 0.")
+             self._log_internal(f"Note: Sending Remote Frame (RTR=1) with no data. Requested DLC will be 0.")
 
         self._log_internal(f"Sending: ID={arbitration_id:X}, Data='{data_bytes.hex().upper()}', Ext={is_extended}, RTR={is_remote}")
         
-        if self.can_comm:
+        # Ensure can_comm is available and has the send_custom_can_message method
+        if self.can_comm and hasattr(self.can_comm, 'send_custom_can_message'):
+            # The send_custom_can_message in can_communication.py needs to accept is_remote_frame
             success = self.can_comm.send_custom_can_message(arbitration_id, data_bytes, is_extended, is_remote)
             if success:
                 self._log_internal("Custom message appears to have been sent by the bus layer.")
@@ -168,7 +174,8 @@ class CanExpert(ICanRawMessageProcessor):
                 self._log_internal("Bus layer reported failure to send custom message.")
                 messagebox.showwarning("Send Error", "Failed to send CAN message. Check logs for details.", parent=self.parent_frame)
         else:
-            self._log_internal("Error: CAN communication module not available for sending.")
+            self._log_internal("Error: CAN communication module not available or method missing for sending.")
+
 
     def _handle_toggle_monitoring(self):
         if self.is_monitoring:
@@ -183,7 +190,8 @@ class CanExpert(ICanRawMessageProcessor):
 
         ids_str = self.ids_monitor_var.get().strip()
         if not ids_str:
-            self.monitored_ids = set() 
+            # Monitor all messages if no specific IDs are provided
+            self.monitored_ids = set() # Empty set means all for is_interested
             self._log_internal("Starting monitoring for ALL CAN IDs.")
         else:
             try:
@@ -199,7 +207,7 @@ class CanExpert(ICanRawMessageProcessor):
         if self.monitor_toggle_button:
             self.monitor_toggle_button.config(text="Stop Monitoring")
         
-        self.csv_log_buffer = [] 
+        self.csv_log_buffer = [] # Clear previous buffer
         self._prepare_csv_log_file()
 
         if self.can_comm:
@@ -208,36 +216,41 @@ class CanExpert(ICanRawMessageProcessor):
         self._log_internal("Monitoring started.")
         self._append_to_display("--- Monitoring Started ---")
 
+
     def _stop_monitoring_logic(self):
         self.is_monitoring = False
         if self.monitor_toggle_button:
             self.monitor_toggle_button.config(text="Start Monitoring")
         
         if self.can_comm:
-            self.can_comm.register_expert_raw_processor(None) 
+            self.can_comm.register_expert_raw_processor(None) # Pass None to unregister
 
         self._log_internal("Monitoring stopped.")
         self._append_to_display("--- Monitoring Stopped ---")
         self._save_and_close_csv_log()
 
+
     def handle_stop_monitoring_on_disconnect(self):
+        """Called when CAN disconnects to ensure monitoring stops cleanly."""
         if self.is_monitoring:
             self._log_internal("CAN disconnected, stopping expert monitoring automatically.")
             self._stop_monitoring_logic()
+
 
     def _prepare_csv_log_file(self):
         base_filename = "can_expert_log"
         extension = ".csv"
         counter = 1
+        # Add a timestamp to the filename to make it unique for each session
         current_timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
         self.csv_filename = f"{base_filename}_{current_timestamp_str}_{counter}{extension}"
-        while os.path.exists(self.csv_filename):
+        while os.path.exists(self.csv_filename): # Ensure unique filename
             counter += 1
             self.csv_filename = f"{base_filename}_{current_timestamp_str}_{counter}{extension}"
         
         try:
             self.csv_file_handle = open(self.csv_filename, 'w', newline='', encoding='utf-8')
-            header = ['Timestamp', 'ID (Hex)', 'Extended', 'RTR', 'DLC', 'Data (Hex)'] 
+            header = ['Timestamp', 'ID (Hex)', 'Extended', 'RTR', 'DLC', 'Data (Hex)'] # Added Extended and RTR
             self.csv_writer = csv.DictWriter(self.csv_file_handle, fieldnames=header)
             self.csv_writer.writeheader()
             self._log_internal(f"Opened CSV log file: {self.csv_filename}")
@@ -248,18 +261,22 @@ class CanExpert(ICanRawMessageProcessor):
             self.csv_writer = None
             self.csv_file_handle = None
 
+
     def _save_and_close_csv_log(self):
-        if self.csv_file_handle:
+        if self.csv_file_handle: # Check if file was successfully opened
             try:
                 self.csv_file_handle.close()
                 self._log_internal(f"Closed CSV log file: {self.csv_filename}")
             except Exception as e:
                 self._log_internal(f"Error closing CSV file: {e}")
-        self.csv_writer = None
-        self.csv_file_handle = None
+        
+        self.csv_writer = None # Clear writer
+        self.csv_file_handle = None # Clear file handle
+        # self.csv_filename remains for information if needed
 
     def _append_to_display(self, text_line: str):
-        if self.message_display and self.gui_queue: 
+        """Appends a line of text to the message display area via GUI queue."""
+        if self.message_display and self.gui_queue: # Ensure gui_queue is available
             self.gui_queue.put(("can_expert_display_update", text_line))
 
     def _clear_display_area(self):
@@ -269,36 +286,39 @@ class CanExpert(ICanRawMessageProcessor):
             self.message_display.config(state=tk.DISABLED)
         self._log_internal("CAN Expert display cleared.")
 
+    # --- ICanRawMessageProcessor Implementation ---
     def is_interested(self, arbitration_id: int) -> bool:
         if not self.is_monitoring:
             return False
-        if not self.monitored_ids:
+        if not self.monitored_ids: # If empty, interested in all
             return True
         return arbitration_id in self.monitored_ids
 
-    def process_raw_can_message(self, msg: CanGuiMessage): # Line 283 (approx) - Use TypeAlias
+    def process_raw_can_message(self, msg: CanGuiMessage): # Use the defined TypeAlias
         if not self.is_monitoring:
             return
 
-        ts = getattr(msg, 'timestamp', time.time()) 
+        # Gracefully access attributes from the message object, providing defaults
+        ts = getattr(msg, 'timestamp', time.time()) # Default to current time if not present
         arb_id = getattr(msg, 'arbitration_id', 0)
         is_ext = getattr(msg, 'is_extended_id', False)
         is_rtr = getattr(msg, 'is_remote_frame', False)
         dlc_val = getattr(msg, 'dlc', 0)
-        data_val = getattr(msg, 'data', b'')
+        data_val = getattr(msg, 'data', b'') # Default to empty bytes
 
         timestamp_str = datetime.fromtimestamp(ts).isoformat(sep=' ', timespec='milliseconds')
         id_hex = f"{arb_id:X}"
         data_hex = data_val.hex().upper()
 
+        # Updated display line to include Extended and RTR flags
         display_line = f"{timestamp_str} | ID: {id_hex.ljust(8)} | Ext: {is_ext} | RTR: {is_rtr} | DLC: {dlc_val} | Data: {data_hex}"
         self._append_to_display(display_line)
 
         log_entry = {
             'Timestamp': timestamp_str,
             'ID (Hex)': id_hex,
-            'Extended': is_ext,
-            'RTR': is_rtr, 
+            'Extended': is_ext, # Log Extended ID flag
+            'RTR': is_rtr,      # Log Remote Frame flag
             'DLC': dlc_val,
             'Data (Hex)': data_hex
         }
@@ -306,6 +326,7 @@ class CanExpert(ICanRawMessageProcessor):
         if self.csv_writer and self.csv_file_handle:
             try:
                 self.csv_writer.writerow(log_entry)
-                self.csv_file_handle.flush() 
+                self.csv_file_handle.flush() # Ensure data is written to disk periodically
             except Exception as e:
                 self._log_internal(f"Error writing to CSV in real-time: {e}")
+                # Consider how to handle persistent CSV errors (e.g., stop logging, try to reopen)

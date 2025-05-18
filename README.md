@@ -87,7 +87,7 @@ Emira compatibility is not tested but possible with some limitations.
  
 ## Block Diagram
 
-![Block Diagram](https://github.com/user-attachments/assets/7a84ae91-8f00-4b2f-a7ca-92fd9c08e7fc)
+![Block Diagram drawio](https://github.com/user-attachments/assets/ad8f123b-5537-4dd1-bd28-02d84ef331d7)
 
 
 ## Planned Updates / Future Work

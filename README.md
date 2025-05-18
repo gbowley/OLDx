@@ -18,7 +18,7 @@ Emira compatibility is not tested but possible with some limitations.
 
 ## Features
 
-* **CAN Bus Communication:** Connects to the vehicle using `usb2can` and `python-can`. Supports standard CAN and ISO-TP for multi-frame diagnostic messages.
+* **User Definable CANbus Communication:** Connects to the vehicle using `usb2can` and `python-can`. Supports standard CAN and ISO-TP for multi-frame diagnostic messages. User can define target addresses to message, as well as message content (including RTR flag). User can also define addresses to monitor (for response monitoring), and view logged communications in GUI and CSV.
 * **Vehicle Identification:** Retrieves the Vehicle Identification Number (VIN) and identifies the vehicle model, year, market, and relevant ECU/module programs based on an internal database (`vehicles.py`).
 * **Diagnostic Trouble Code (DTC) Management:**
     * Reads confirmed and pending fault codes from Engine Control Module (ECM), Transmission Control Unit (TCU, if installed), and Anti-lock Braking System (ABS) modules.
@@ -27,7 +27,7 @@ Emira compatibility is not tested but possible with some limitations.
     * Looks up descriptions for known fault codes (`known_faults.py`).
 * **Live Data Dashboard:**
     * Displays real-time data broadcasted on the CAN bus (e.g., RPM, pedal position, coolant temp, gear).
-    * Requests data on specific OBD Mode 01 and UDS Mode 22 PIDs at user defined frequency (e.g., fuel trims, lambda values, timing advance, knock retard, IAT, AAT).
+    * Requests data on pre-selected OBD Mode 01 and UDS Mode 22 PIDs at user defined frequency (e.g., fuel trims, lambda values, timing advance, knock retard, IAT, AAT).
     * Logs live data sessions to CSV files for later analysis.
 * **Performance Data Retrieval:** Reads historical performance metrics logged by the ECU, such as time spent at specific RPM/speed/TPS ranges, max speed events, standing start times, and low oil pressure event details. This could prove useful when buying a car.
 
@@ -58,20 +58,31 @@ Emira compatibility is not tested but possible with some limitations.
 
 1.  **Connect:** Click the "Connect" button. The status label will indicate if the connection was successful.
 2.  **Identify Vehicle:** Click "Get VIN / Identify". The application will attempt to read the VIN and look up the vehicle details. If automatic reading fails, you may be prompted for manual entry. Vehicle details will populate in the top section and the 'Vehicle Details' tab.
-3.  **Read Faults:** Navigate to the 'Diagnostics & Faults' tab and click "Read All Faults". The application will query the ECM, TCU, and ABS (using appropriate protocols based on identified vehicle info) and display the results.
+3.  **Read Faults:** Navigate to the 'Diagnostics & Faults' tab and click "Read All Faults". The application will query the ECM, TCU, and ABS (using appropriate protocols based on identified vehicle info) and display the results (ABS is WIP).
+
+![Interface1](https://github.com/user-attachments/assets/9ab9311b-b381-4dd2-a38d-d0e80f390616)
+
 4.  **Clear Faults:** After reviewing faults, click "Clear All Faults" on the same tab. *Note: A full ignition cycle (off/on) is usually required after clearing faults for them to be fully reset.* Re-read faults after the cycle to confirm.
 5.  **Live Dashboard:**
     * Go to the 'Live Dashboard' tab.
-    * Select the desired **Update Freq** (how often the tool *requests* data;). Higher update frequency will improve log resolution at the cost of increased CANbus load (high frequencies not yet tested).
+    * Select the desired **Update Freq**.
     * Click "Start Dashboard". Live values will populate the fields.
     * Click "Stop Dashboard" to end the live session. The buffered data will be saved to CSV file in the application's directory. Later sessions will be saved separately.
+
+![Interface3](https://github.com/user-attachments/assets/90bf8b90-53f8-47fe-a8b9-da5e19172bf5)
+
 6.  **Performance Data:** Go to the 'Performance Data' tab and click "Read Performance Data". The application will query the ECU for logged historical metrics and display them.
-7.  **Log (Developer):** The 'Log' tab displays timestamped messages about application operations, connection status, errors, and diagnostic steps. Please provide full logs when reporting errors.
+7.  **Can (Expert):** This tab is intended for expert users only - to support investigation of commands used to trigger certain states in specific modules (i.e. facilitating ABS bleed). Incorrect use can alter or un-map devices on the CANbus. Use with caution.
+
+![Interface5](https://github.com/user-attachments/assets/90adf7f4-24cb-4405-af86-5f1fd42e0f5b)
+
+8.  **Log (Developer):** The 'Log' tab displays timestamped messages about application operations, connection status, errors, and diagnostic steps. Please provide full logs when reporting errors.
 
 ## Limitations
 
 * **Vehicle Coverage:** Primarily supports Lotus Elise, Exige, and Evora models based on the data in `vehicles.py`. Support for other models (like Emira V6) is not tested.
-* **Module Support:** While ECM, and ABS are currently tested, communication success can vary depending on the specific module variant and vehicle year. Some modules might require specific diagnostic sessions or protocols not fully implemented for all variants. I need to test the tool on more vehicles to confirm compatibility across more modules.
+* **Module Support:** While ECM error read/clear is tested, ABS is WIP. Communication success can vary depending on the specific module variant and vehicle year. Some modules might require specific diagnostic sessions or protocols not fully implemented for all variants. I need to test the tool on more vehicles to confirm compatibility across more modules.
+* **Live Dashboard Issues:** Live dashboard is a work in progress, the accuracy of the current dashboard and labelling is unknown. Some parameters are not logged correctly (or possibly not present at all). The limiting factor is currently the speed of ECU responses (NOT polling speed), hence implementing a way to choose PIDs to monitor, and maybe vary the polling rate on a per PID basis would improve this. Identifying broadcast parameters using CAN (expert) or similar would be useful, as these are not subject to response rate limits, and update far more quickly.  
 * **Development Release:** This application is the result of a couple of days of development and tested on only one vehicle, as such it is highly likely that I have not accounted for various issues which may arise when the application is used on other vehicles.
  
 ## Block Diagram
@@ -89,4 +100,5 @@ Emira compatibility is not tested but possible with some limitations.
 ## Changelog
 
 * 05/05/2025 - Initial developer release. Diagnostics of ECM/ABS units tested working on Exige V6S. Basic fixed function live data capture and CSV logging implemented. Full read of performance data implemented.
+* 18/05/2025 - Added custom CAN messaging functionality. Slightly improved the way CAN_communication handles ABS messages.  
 

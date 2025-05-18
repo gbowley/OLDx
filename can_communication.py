@@ -30,7 +30,7 @@ ABS_RESPONSE_ID: int = 0x6F5 # KWP ID for ABS
 TCU_REQUEST_ID: int = 0x7E1 # Example, adjust if different
 TCU_RESPONSE_ID: int = 0x7E9 # Example, adjust if different
 RELEVANT_RESPONSE_IDS: Set[int] = {UDS_RESPONSE_ID, ABS_RESPONSE_ID, TCU_RESPONSE_ID}
-# Define which IDs strictly use ISO-TP multi-frame logic
+# Define which IDs strictly use ISO-TP multi-frame logic (Reverted to original)
 UDS_RESPONSE_IDS_FOR_ISOTP: Set[int] = {UDS_RESPONSE_ID, TCU_RESPONSE_ID}
 
 
@@ -210,8 +210,8 @@ class CanCommunication:
             try: self.bus.shutdown()
             except Exception as sd_e: self._log(f"Bus shutdown error on fail: {sd_e}")
         if self.notifier:
-             try: self.notifier.stop()
-             except Exception as ne: self._log(f"Notifier stop error on fail: {ne}")
+            try: self.notifier.stop()
+            except Exception as ne: self._log(f"Notifier stop error on fail: {ne}")
         self.bus = None
         self.notifier = None
         return False
@@ -256,13 +256,13 @@ class CanCommunication:
         self._log("Clearing queues...")
         # Clear queues to prevent old data processing on reconnect
         while not self.rx_queue.empty():
-             try: self.rx_queue.get_nowait()
-             except queue.Empty: break
+            try: self.rx_queue.get_nowait()
+            except queue.Empty: break
         while not self.response_queue.empty():
-             try: self.response_queue.get_nowait()
-             except queue.Empty: break
+            try: self.response_queue.get_nowait()
+            except queue.Empty: break
         with self._isotp_lock: # Ensure thread safety for ISO-TP state
-             self._reset_isotp_state()
+            self._reset_isotp_state()
         self._log("Disconnected.")
 
     def _on_message_received_callback(self, msg: can.Message):
@@ -281,15 +281,15 @@ class CanCommunication:
                     self._last_q_full_log_time = time.monotonic()
                     self._log("Warning: RX queue full. Messages may be lost.")
             except Exception as e:
-                 # Log other errors in callback, also throttled
-                 if hasattr(self, '_last_rx_err_log_time'):
-                     now = time.monotonic()
-                     if now - self._last_rx_err_log_time > 10.0: # Log every 10s
-                          self._log(f"Error in RX callback putting to queue: {e}")
-                          self._last_rx_err_log_time = now
-                 else:
-                     self._last_rx_err_log_time = time.monotonic()
-                     self._log(f"Error in RX callback putting to queue: {e}")
+                # Log other errors in callback, also throttled
+                if hasattr(self, '_last_rx_err_log_time'):
+                    now = time.monotonic()
+                    if now - self._last_rx_err_log_time > 10.0: # Log every 10s
+                        self._log(f"Error in RX callback putting to queue: {e}")
+                        self._last_rx_err_log_time = now
+                else:
+                    self._last_rx_err_log_time = time.monotonic()
+                    self._log(f"Error in RX callback putting to queue: {e}")
 
     # --- Raw Logging Control ---
     def _activate_raw_diag_logging(self):
@@ -318,35 +318,35 @@ class CanCommunication:
                     if now < self._log_raw_diag_until:
                         # Log only relevant diagnostic response IDs raw
                         if msg.arbitration_id in RELEVANT_RESPONSE_IDS:
-                           self._log(f"[RAW_DIAG_RX] ID={msg.arbitration_id:03X} DLC={msg.dlc} Data={msg.data.hex().upper()}")
+                            self._log(f"[RAW_DIAG_RX] ID={msg.arbitration_id:03X} DLC={msg.dlc} Data={msg.data.hex().upper()}")
                     else:
                         self._deactivate_raw_diag_logging() # Automatically disable after duration
                 # --- End Raw Diagnostic Logging ---
 
                 # --- Standard Message Routing ---
                 is_diagnostic_response = msg.arbitration_id in RELEVANT_RESPONSE_IDS
-                
+
                 # --- Live Dashboard Processor ---
                 processor = self.live_dashboard_processor
                 is_live_data = False
                 if processor and hasattr(processor, 'TARGET_IDS'):
-                     is_live_data = msg.arbitration_id in processor.TARGET_IDS
+                    is_live_data = msg.arbitration_id in processor.TARGET_IDS
 
                 if is_live_data and processor:
                     try:
-                        if callable(getattr(processor, 'process_message', None)): 
+                        if callable(getattr(processor, 'process_message', None)):
                             processor.process_message(msg) # Assuming live_dashboard takes the full msg
-                        else: 
-                            self._log(f"Error: Live processor for ID {msg.arbitration_id:X} is missing process_message method."); 
+                        else:
+                            self._log(f"Error: Live processor for ID {msg.arbitration_id:X} is missing process_message method.");
                             self.live_dashboard_processor = None # Potentially unregister bad processor
-                    except Exception as live_e: 
+                    except Exception as live_e:
                         self._log(f"Error processing live data for ID {msg.arbitration_id:X}: {live_e}")
-                
+
                 # --- Diagnostic Response Parser ---
                 if is_diagnostic_response: # This was your original condition for _parse_incoming_message
-                     try: 
+                    try:
                         self._parse_incoming_message(msg) # Pass to ISO-TP/KWP parser
-                     except Exception as parse_e: 
+                    except Exception as parse_e:
                         self._log(f"Error parsing diagnostic response for ID {msg.arbitration_id:X}: {parse_e}")
 
 
@@ -371,11 +371,12 @@ class CanCommunication:
                 time.sleep(0.1) # Small delay before retrying on error
         self._log("CAN Read Loop stopped.")
 
-
+    # _send_can_message
     def _send_can_message(self, arbitration_id: int, data: Any, is_extended: bool = False, is_remote: bool = False) -> bool:
         """
         Internal method to send a single CAN message.
         Handles data type conversion and padding.
+        Includes RTR frame support.
         """
         if not self.is_connected or not self.bus:
             self._log("Error: Cannot send CAN message, not connected.")
@@ -384,249 +385,261 @@ class CanCommunication:
             if isinstance(data, str): # Assume hex string
                 data_bytes = bytes.fromhex(data)
             elif isinstance(data, (list, tuple)): # Assume list/tuple of ints
-                 if any(not isinstance(b, int) or b < 0 or b > 255 for b in data):
-                     raise ValueError("Data bytes in list/tuple must be integers between 0 and 255.")
-                 data_bytes = bytes(data)
+                if any(not isinstance(b, int) or b < 0 or b > 255 for b in data):
+                    raise ValueError("Data bytes in list/tuple must be integers between 0 and 255.")
+                data_bytes = bytes(data)
             elif isinstance(data, bytes):
                 data_bytes = data
             else:
                 self._log(f"Error: Invalid CAN data type provided: {type(data)}")
                 return False
 
-            # For remote frames, the data field is typically not used for sending, 
-            # and the DLC indicates the expected length of the reply.
-            # python-can's Message object handles this when is_remote_frame=True.
-            # If is_remote is true, data_bytes might be empty, and DLC should reflect that or the expected length.
-            # Current logic uses len(data_bytes) for DLC. This is fine for data frames.
-            # For remote frames, if data_bytes is empty, DLC will be 0. If data_bytes has content,
-            # python-can might ignore the data part for actual transmission if is_remote_frame=True.
-            # Let's ensure DLC is appropriate for RTR. Typically, DLC in an RTR frame *requests* that many bytes.
-            
             actual_dlc = len(data_bytes)
             if is_remote:
-                # If sending an RTR frame, the data field isn't transmitted.
-                # The DLC in the RTR frame indicates the number of bytes requested from the remote node.
-                # If the user supplied data for an RTR frame, we use its length as the requested DLC.
-                # If no data was supplied, DLC will be 0 (requesting 0 bytes, or sometimes interpreted as requesting max).
-                # The 'data' field of the can.Message object will be ignored by the bus if is_remote_frame=True.
-                pass # actual_dlc is already len(data_bytes)
+                # For RTR, DLC indicates requested length. Data itself is not sent.
+                # python-can's Message object handles this when is_remote_frame=True.
+                pass # actual_dlc is already len(data_bytes), used for dlc field in Message
 
-            if actual_dlc > 8:
+            if actual_dlc > 8 and not is_remote : # Standard CAN Frame data limit
                  self._log(f"Error: CAN data length ({actual_dlc}) for DLC exceeds 8 bytes. ID={arbitration_id:03X}")
                  return False
 
-            # Padding for can.Message object (some backends might expect 8 bytes in the data attribute,
-            # but DLC is the important part for the actual CAN frame on the bus).
-            if len(data_bytes) < 8:
-                padded_data_for_msg_obj = data_bytes + bytes([0xAA] * (8 - len(data_bytes)))
-            else:
-                padded_data_for_msg_obj = data_bytes
+
+            # Padding for can.Message object data attribute if not RTR.
+            # For RTR, data field in Message object is typically ignored by backend, DLC matters.
+            if not is_remote:
+                if len(data_bytes) < 8:
+                    padded_data_for_msg_obj = data_bytes + bytes([0xAA] * (8 - len(data_bytes)))
+                else:
+                    padded_data_for_msg_obj = data_bytes
+            else: # For RTR, data field often empty or not used for TX, DLC is key.
+                  # Let's pass empty bytes for data to Message if RTR, DLC is set by actual_dlc.
+                padded_data_for_msg_obj = b''
+
 
             message = can.Message(
                 arbitration_id=arbitration_id,
-                data=padded_data_for_msg_obj, # Data to be sent or ignored if RTR
+                data=padded_data_for_msg_obj,
                 is_extended_id=is_extended,
-                is_remote_frame=is_remote,      # SET THE RTR FLAG HERE
-                is_fd=False, 
-                dlc=actual_dlc                  # Set correct DLC
+                is_remote_frame=is_remote,
+                is_fd=False,
+                dlc=actual_dlc # Correct DLC for the frame
             )
-            self.bus.send(message, timeout=0.2) 
-            
-            # Log the sent frame details
+            self.bus.send(message, timeout=0.2)
+
             log_data_str = data_bytes.hex().upper() if not is_remote else "(RTR Frame)"
-            self._log(f"Sent: ID={arbitration_id:03X} DLC={actual_dlc} Data={log_data_str} Ext={is_extended} RTR={is_remote}") # MODIFIED Log
+            self._log(f"Sent: ID={arbitration_id:03X} DLC={actual_dlc} Data={log_data_str} Ext={is_extended} RTR={is_remote}")
             return True
-        
-        except ValueError as ve: 
+
+        except ValueError as ve:
             self._log(f"Data Error sending CAN message (ID: {arbitration_id:03X}): {ve}")
-        except can.CanError as e: 
+        except can.CanError as e:
             self._log(f"CAN Bus Error sending message (ID: {arbitration_id:03X}): {e}")
-        except Exception as e: 
-            self._log(f"Unexpected error sending CAN message (ID: {arbitration_id:03X}): {e}")
+        except Exception as e:
+            self._log(f"Unexpected error sending CAN message (ID: {arbitration_id:03X}): {type(e).__name__} - {e}")
         return False
+
+    def send_command(self, command_name: str, timeout: float = 3.0,
+                     req_id: Optional[int] = None, data: Optional[Union[List[int], bytes]] = None,
+                     is_extended: bool = False,
+                     expected_response_service_id: Optional[int] = None) -> Tuple[bool, Optional[List[int]]]:
+        """
+        Sends a diagnostic command and waits for a potentially multi-frame response.
+        Response_data format from queue is now consistently what this method expects from original version:
+          - UDS SF: [pci_byte(incl.len), SID, ...] or [0x00, actual_len, SID, ...]
+          - UDS MF: [ff_pci, len_low, SID, ...] (assembled payload, with FF PCI info prepended)
+          - KWP:    [SID, actual_payload_bytes...]
+          - NRC:    Protocol-specific NRC structure starting with its SID (e.g., 0x7F)
+        """
+        if not self.is_connected:
+            self._log(f"Error: Cannot send '{command_name}', not connected.")
+            return False, None
 
         # --- Resolve Command ---
         resolved_req_id: Optional[int] = req_id
         resolved_data: Optional[Union[List[int], bytes]] = data
         resolved_is_extended: bool = is_extended
-        request_service_id: Optional[int] = None # The SID we are sending in our request
+        request_service_id: Optional[int] = None # The SID we are sending
 
-        if resolved_req_id is None or resolved_data is None: # If not fully specified, look up or parse
-            if command_name.startswith('p'): # Performance DID request, e.g., "p0100"
-                 try:
-                     did_hex = command_name[1:]
-                     assert len(did_hex) == 4 # Ensure DID is 2 bytes (4 hex chars)
-                     did_int = int(did_hex, 16)
-                     resolved_req_id = UDS_REQUEST_ID
-                     resolved_data = [0x03, 0x22, (did_int >> 8) & 0xFF, did_int & 0xFF] # Mode 22, DID hi, DID lo
-                     request_service_id = 0x22
-                 except (ValueError, AssertionError, Exception) as e:
-                     self._log(f"Error: Invalid performance command format '{command_name}': {e}")
-                     return False, None
-            elif command_name.startswith('s'): # Raw send command, e.g., "s07E002010D"
+        if resolved_req_id is None or resolved_data is None:
+            if command_name.startswith('p'):
                 try:
-                    assert len(command_name) >= 7 # 's' + 4 ID hex + at least 2 data hex
+                    did_hex = command_name[1:]
+                    if not (len(did_hex) == 4 and all(c in '0123456789abcdefABCDEF' for c in did_hex)):
+                        raise ValueError("DID hex must be 4 valid hex characters.")
+                    did_int = int(did_hex, 16)
+                    resolved_req_id = UDS_REQUEST_ID
+                    resolved_data = [0x03, 0x22, (did_int >> 8) & 0xFF, did_int & 0xFF]
+                    request_service_id = 0x22
+                except ValueError as e:
+                    self._log(f"Error: Invalid performance command format '{command_name}': {e}")
+                    return False, None
+            elif command_name.startswith('s'):
+                try:
+                    if len(command_name) < 7 : raise ValueError("Raw command too short.")
                     raw_id_hex = command_name[1:5]
                     raw_data_hex = command_name[5:]
-                    assert len(raw_data_hex) % 2 == 0 # Data hex must be even length
+                    if not (all(c in '0123456789abcdefABCDEF' for c in raw_id_hex) and len(raw_id_hex) <=4 ): # Allow 3 or 4 hex for ID
+                         raise ValueError("Raw command ID part invalid.")
+                    if not (all(c in '0123456789abcdefABCDEF' for c in raw_data_hex) and len(raw_data_hex) % 2 == 0):
+                         raise ValueError("Raw command data part invalid.")
                     resolved_req_id = int(raw_id_hex, 16)
                     resolved_data = bytes.fromhex(raw_data_hex)
-                    # Determine SID from data if possible (usually byte 1 or 2 after PCI)
-                    if len(resolved_data) > 1: request_service_id = resolved_data[1] # Guessing SID is at index 1
-                except (ValueError, AssertionError, Exception) as e:
+                    if len(resolved_data) > 1 and resolved_req_id not in [ABS_REQUEST_ID]: # UDS like, SID is usually byte 1 after PCI
+                        request_service_id = resolved_data[1]
+                    elif len(resolved_data) > 0: # KWP like or simple command, SID might be first byte
+                        request_service_id = resolved_data[0]
+                except ValueError as e:
                     self._log(f"Error parsing raw send command '{command_name}': {e}")
                     return False, None
-            else: # Lookup in predefined COMMANDS
+            else:
                 command_tuple = COMMANDS.get(command_name)
                 if command_tuple is None:
-                    # Check if it's a command that doesn't send a CAN message (e.g. local action)
                     if command_name in COMMANDS and COMMANDS[command_name] is None:
                         self._log(f"Executing local action (no CAN send): {command_name}")
-                        # Handle local actions like 'monitorAllStart', 'enableFlowControl' if needed here
-                        return True, None # Or specific return based on action
+                        # Handle local actions if any specific logic needed here
+                        return True, None
                     else:
-                        self._log(f"Error: Command '{command_name}' not recognized or not configured for sending.")
+                        self._log(f"Error: Command '{command_name}' not recognized or not configured.")
                         return False, None
                 resolved_req_id, data_list = command_tuple
-                resolved_data = bytes(data_list) # Ensure it's bytes
-                # Determine SID from data_list (usually index 1 after length/PCI byte)
-                if len(data_list) > 1: request_service_id = data_list[1]
+                resolved_data = bytes(data_list)
+                if len(data_list) > 1: request_service_id = data_list[1] # PCI often first, then SID
 
-        if resolved_req_id is None or resolved_data is None: # Should be resolved by now
-            self._log(f"Internal Error: Could not determine CAN message data for command '{command_name}'.")
+        if resolved_req_id is None or resolved_data is None:
+            self._log(f"Internal Error: Could not determine CAN message data for '{command_name}'.")
             return False, None
 
         # --- Prepare for Response ---
-        # Clear any stale messages from the response queue before sending new command
         while not self.response_queue.empty():
             try:
                 stale_msg = self.response_queue.get_nowait()
                 self._log(f"Cleared stale message from response queue: {stale_msg}")
             except queue.Empty:
-                break # Queue is empty
+                break
 
-        with self._isotp_lock: # Ensure thread-safe access to ISO-TP state
-            self._reset_isotp_state() # Reset ISO-TP state for new transaction
-            # Set target ID for ISO-TP responses if applicable
-            if resolved_req_id in UDS_RESPONSE_IDS_FOR_ISOTP or resolved_req_id == UDS_REQUEST_ID: # Common UDS case
-                 self._isotp_target_id = resolved_req_id + 8 # Target the corresponding UDS response ID (e.g., 0x7E0 -> 0x7E8)
+        with self._isotp_lock:
+            self._reset_isotp_state()
+            # Set target ID for ISO-TP responses if applicable. UDS_RESPONSE_IDS_FOR_ISOTP is now corrected.
+            if resolved_req_id in UDS_RESPONSE_IDS_FOR_ISOTP or resolved_req_id == UDS_REQUEST_ID:
+                self._isotp_target_id = resolved_req_id + 8
 
         # --- Activate Raw Logging & Send Command ---
-        self._activate_raw_diag_logging() # Start raw logging for this transaction
+        self._activate_raw_diag_logging()
+        # _send_can_message's is_remote defaults to False, which is correct for diagnostic commands.
         if not self._send_can_message(resolved_req_id, resolved_data, resolved_is_extended):
-            self._deactivate_raw_diag_logging() # Stop raw logging if send failed
+            self._deactivate_raw_diag_logging()
             return False, None
 
         # --- Wait for Response ---
         start_time = time.monotonic()
         response_received: Optional[List[int]] = None
         success_flag = False
-        # Determine if this was a KWP request based on the request ID (e.g., ABS_REQUEST_ID)
         is_kwp_request = resolved_req_id == ABS_REQUEST_ID
 
         while True:
             current_time = time.monotonic()
             if current_time - start_time > timeout:
-                self._log(f"Timeout ({timeout}s) waiting for response to command '{command_name}' (ReqID: {resolved_req_id:X})")
-                with self._isotp_lock: self._reset_isotp_state() # Reset ISO-TP state on timeout
+                self._log(f"Timeout ({timeout}s) waiting for response to '{command_name}' (ReqID: {resolved_req_id:X})")
+                with self._isotp_lock: self._reset_isotp_state()
                 success_flag = False; response_received = None
-                break # Exit loop on timeout
+                break
 
             try:
-                # Get processed response from the response_queue (populated by _parse_incoming_message)
-                response_data = self.response_queue.get(block=True, timeout=0.1) # Small timeout for queue get
+                response_data = self.response_queue.get(block=True, timeout=0.1)
 
-                # --- Determine Service ID Index based on protocol ---
-                service_id_index = -1 # Index within response_data where SID is expected
+                service_id_index = -1
                 response_format_type = "Unknown"
                 actual_service_id = None
 
-                if not response_data: # Should not happen if queue put valid data
-                    self._log(f"Received empty response fragment from queue. Continuing wait.")
+                if not response_data : # Should not be empty if valid
+                    self._log(f"Received empty/invalid response fragment from queue for {command_name}. Continuing wait.")
                     continue
 
                 if is_kwp_request:
-                    # For KWP, _parse_incoming_message puts [SID, Payload...] into response_queue
-                    service_id_index = 0
+                    # KWP: response_data from queue is [SID, actual_payload_bytes...]
+                    # This is because _parse_incoming_message (corrected) for ABS_RESPONSE_ID puts data_bytes[1:]
+                    service_id_index = 0 # SID is the first element
                     response_format_type = "KWP"
                     if len(response_data) > service_id_index:
                         actual_service_id = response_data[service_id_index]
-                    else: # Should not happen
-                         self._log(f"Received invalid/short KWP response fragment from queue: {response_data}. Continuing wait.")
-                         continue
+                    else:
+                        self._log(f"Received invalid/short KWP response fragment: {response_data}. Continuing wait.")
+                        continue
                 else: # UDS/ISO-TP path
-                    # _parse_incoming_message puts [pci_byte(s), SID, Payload...] for UDS
+                    # UDS: response_data from queue is [PCI_byte(s), SID, data_bytes...]
+                    # This is because _handle_sf/_handle_ff (corrected) put PCI info first.
+                    if not response_data: continue # Should not happen here
                     first_byte = response_data[0]
-                    pci_type = (first_byte >> 4) & 0x0F # Get PCI type from first byte
+                    pci_type = (first_byte >> 4) & 0x0F
 
                     if pci_type == PCI_TYPE_FF: # UDS MF: [ff_pci, len_low, SID, ...]
                         if len(response_data) >= 3: service_id_index = 2; response_format_type = "UDS_MF"
                     elif pci_type == PCI_TYPE_SF: # UDS SF: [pci_byte(incl.len), SID, ...]
                         if len(response_data) >= 2: service_id_index = 1; response_format_type = "UDS_SF"
                     elif first_byte == 0x00 and len(response_data) >= 3: # UDS SF length escape [0x00, Len, SID, ...]
-                        # This indicates the SF PCI was 0x00, and the actual length followed.
                         service_id_index = 2; response_format_type = "UDS_SF_ESC"
-                    # Note: CF frames are assembled and only the final payload (starting with FF PCI) is put on queue.
 
-                    if service_id_index != -1: # If SID index was determined
-                         actual_service_id = response_data[service_id_index]
-                    else: # Could not determine SID for UDS response
-                         self._log(f"Received ambiguous/short UDS response from queue: {response_data}. Continuing wait.")
-                         continue
+                    if service_id_index != -1 and len(response_data) > service_id_index:
+                        actual_service_id = response_data[service_id_index]
+                    else:
+                        self._log(f"Received ambiguous/short UDS response from queue: {response_data}. PCI Type: {pci_type:X}. Continuing wait.")
+                        continue
 
-                if actual_service_id is None: # Should have been set if logic above is correct
-                     self._log(f"Could not determine actual_service_id for response: {response_data}. Format guess: {response_format_type}. Continuing wait.")
-                     continue
+                if actual_service_id is None:
+                    self._log(f"Could not determine actual_service_id for response: {response_data}. Format guess: {response_format_type}. Continuing wait.")
+                    continue
 
                 # --- Validate Response ---
                 is_negative_response = False
-                nrc = 0 # Negative Response Code
+                nrc = 0
                 req_serv_echo = 0 # Service ID echoed in the NRC response
 
                 if actual_service_id == 0x7F: # Negative Response SID
                     is_negative_response = True
                     if is_kwp_request:
-                        # KWP NRC format from queue: [0x7F, req_sid_echo, nrc, ...]
+                        # KWP NRC from queue: [0x7F, echoed_SID, NRC_code, ...]
                         req_serv_echo = response_data[1] if len(response_data) > 1 else 0
                         nrc = response_data[2] if len(response_data) > 2 else 0
                     else: # UDS NRC
-                        # UDS NRC format from queue: [pci(s), 0x7F, req_sid_echo, nrc, ...]
-                        # SID echo is at service_id_index + 1, NRC at service_id_index + 2
-                        sid_echo_index = service_id_index + 1
-                        nrc_index = service_id_index + 2
-                        if len(response_data) > nrc_index:
-                            req_serv_echo = response_data[sid_echo_index]
-                            nrc = response_data[nrc_index]
-                        else: # Cannot reliably extract NRC from short UDS NRC response
+                        # UDS NRC from queue: [PCI(s), 0x7F, echoed_SID, NRC_code, ...]
+                        # SID was at service_id_index, so echoed_SID is next, NRC is after that
+                        echoed_sid_payload_index = service_id_index + 1
+                        nrc_payload_index = service_id_index + 2
+                        if len(response_data) > nrc_payload_index:
+                            req_serv_echo = response_data[echoed_sid_payload_index]
+                            nrc = response_data[nrc_payload_index]
+                        else: # Cannot reliably extract NRC
                             self._log(f"Warning: Short UDS NRC response received: {response_data}")
                             req_serv_echo = request_service_id if request_service_id is not None else 0xFF # Best guess
                             nrc = 0 # Unknown NRC
 
                 if is_negative_response:
-                    # Check if NRC is for the service we just sent
                     if request_service_id is None or req_serv_echo == request_service_id:
-                         self._log(f"Received NRC: {nrc:02X} ({decode_nrc(nrc)}) for Service ${req_serv_echo:02X} (Command: {command_name}) Format: {response_format_type}")
-                         with self._isotp_lock: self._reset_isotp_state() # Reset ISO-TP state
-                         success_flag = False # NRC means command was not successful in the ECU's view
-                         response_received = response_data # Keep NRC response data
-                         break # Exit loop, NRC received for our command
-                    else: # NRC for a different service (e.g., late response)
-                         self._log(f"Ignoring late/mismatched NRC: {nrc:02X} for Service ${req_serv_echo:02X} while waiting for Service ${request_service_id if request_service_id else 'Any'} (Cmd: {command_name})")
-                         continue # Ignore this NRC and continue waiting
+                        self._log(f"Received NRC: {nrc:02X} ({decode_nrc(nrc)}) for Service ${req_serv_echo:02X} (Command: {command_name}) Format: {response_format_type}")
+                        with self._isotp_lock: self._reset_isotp_state()
+                        success_flag = False
+                        response_received = response_data # Return full NRC frame
+                        break
+                    else:
+                        self._log(f"Ignoring late/mismatched NRC: {nrc:02X} for Service ${req_serv_echo:02X} while waiting for Service ${request_service_id if request_service_id else 'Any'} (Cmd: {command_name})")
+                        continue # Ignore this NRC and continue waiting
 
                 # Check for Positive Response Match (if not an NRC)
-                if expected_response_service_id is not None: # If we expect a specific positive SID
+                if expected_response_service_id is not None:
                     if actual_service_id == expected_response_service_id:
-                        # self._log(f"Received expected positive response (SID: {actual_service_id:02X}, Format: {response_format_type}) for {command_name}")
-                        success_flag = True; response_received = response_data
+                        success_flag = True
+                        response_received = response_data
                         break # Correct positive response received
-                    else: # Positive response, but not the SID we expected
+                    else: # Mismatched SID
                         log_data_hex = bytes(response_data).hex().upper()
-                        self._log(f"Ignoring mismatched positive response (Expected SID: {expected_response_service_id:02X}, Got SID: {actual_service_id:02X}, Format: {response_format_type}, Data: {log_data_hex}) while waiting for {command_name}")
-                        continue # Ignore this response and continue waiting
+                        self._log(f"Mismatched positive response (Expected SID: {expected_response_service_id:02X}, Got SID: {actual_service_id:02X}, Format: {response_format_type}, Data: {log_data_hex}) for {command_name}")
+                        success_flag = False # Explicitly fail
+                        response_received = response_data # Return the mismatched data
+                        break # Exit loop, a response was received, but it was not the expected one
                 else: # Accept first positive response if no specific SID expected
-                    # self._log(f"Received first positive response (SID: {actual_service_id:02X}, Format: {response_format_type}) for {command_name}")
-                    success_flag = True; response_received = response_data
+                    success_flag = True
+                    response_received = response_data
                     break # First positive response is acceptable
 
             except queue.Empty:
@@ -634,400 +647,367 @@ class CanCommunication:
             except Exception as e:
                 self._log(f"Error processing response queue for command '{command_name}': {e}\n{traceback.format_exc()}")
                 success_flag = False; response_received = None
-                break # Exit loop on unexpected error
+                break
 
-        self._deactivate_raw_diag_logging() # Stop raw logging after transaction
+        self._deactivate_raw_diag_logging()
         return success_flag, response_received
 
-
+    # _send_flow_control
     def _send_flow_control(self, flow_status: int = FC_STATUS_CTS, block_size: int = 0, st_min_ms: int = 0):
-        """Sends an ISO-TP Flow Control frame."""
-        if self._isotp_flow_control_id is None: # This is the ID of the ECU that sent the FF
-            self._log("Error: Cannot send Flow Control, flow control target ID (ECU's response ID) not set.")
+        if self._isotp_flow_control_id is None:
+            self._log("Error: Cannot send Flow Control, _isotp_flow_control_id (ECU's response ID) not set.")
             return
 
-        # Determine destination ID for FC (usually the ECU's request ID = ECU's response ID - 8)
-        # Example: If ECU responded on 0x7E8 (FF), we send FC to 0x7E0.
-        if 0x7E8 <= self._isotp_flow_control_id <= 0x7EF: # Common UDS physical addressing range
-            fc_destination_id = self._isotp_flow_control_id - 8
-        elif self._isotp_flow_control_id == TCU_RESPONSE_ID: # Specific handling for TCU if needed
+        fc_destination_id: Optional[int] = None
+        # Determine destination ID for FC (usually the ECU's request ID)
+        if self._isotp_flow_control_id == UDS_RESPONSE_ID:
+            fc_destination_id = UDS_REQUEST_ID
+        elif self._isotp_flow_control_id == TCU_RESPONSE_ID:
             fc_destination_id = TCU_REQUEST_ID
-        # Add other specific mappings if ECU uses non-standard request/response ID pairs for ISO-TP
-        else:
-            # Avoid sending FC for non-standard or potentially KWP IDs unless explicitly handled
-            self._log(f"Warning: Suppressing Flow Control frame intended for non-standard response ID {self._isotp_flow_control_id:X}.")
+        elif 0x7E8 <= self._isotp_flow_control_id <= 0x7EF: # General UDS physical response range
+            fc_destination_id = self._isotp_flow_control_id - 8
+        # Add other specific ISO-TP capable response IDs here if needed
+
+        if fc_destination_id is None:
+            self._log(f"Warning: No mapping to determine FC destination ID from ECU response ID {self._isotp_flow_control_id:X}. Suppressing FC.")
             return
 
-        # Double check we are not sending FC to a known KWP request ID (which wouldn't expect it)
-        if fc_destination_id == ABS_REQUEST_ID: # ABS uses KWP, doesn't expect ISO-TP FC
-            self._log(f"Warning: Suppressing Flow Control frame intended for KWP request ID {fc_destination_id:X}.")
+        # Explicitly prevent sending FC to known KWP request IDs
+        if fc_destination_id == ABS_REQUEST_ID:
+            self._log(f"Warning: Suppressing FC frame potentially intended for KWP request ID {fc_destination_id:X} (derived from {self._isotp_flow_control_id:X}).")
             return
 
-        # Encode STmin (Separation Time Minimum)
+        # STmin encoding
         st_min_can_byte = 0x00 # Default to 0ms
         if 0 <= st_min_ms <= 127: # 0-127 ms
-            st_min_can_byte = st_min_ms
-        elif 100 <= st_min_ms <= 900 and st_min_ms % 100 == 0 : # 100-900 us range (0xF1-0xF9)
-            st_min_can_byte = 0xF0 + (st_min_ms // 100)
-        else: # Value out of standard range or not a multiple of 100us for F1-F9
-            self._log(f"Warning: STmin {st_min_ms}ms out of standard ISO-TP range or granularity, using 0ms for FC.")
-            st_min_can_byte = 0x00 # Fallback to 0ms
+            st_min_can_byte = int(st_min_ms)
+        elif 0.1 <= st_min_ms < 1.0: # For 100us to 900us (which is 0.1ms to 0.9ms)
+            # ISO 15765-2: F1-F9 for 100us to 900us
+            st_min_can_byte = 0xF0 + int(st_min_ms * 10)
+        elif st_min_ms != 0 : # If not 0, but not in ranges above
+            self._log(f"Warning: STmin {st_min_ms}ms out of standard encodable range for FC. Using 0ms (byte 0x00).")
+            st_min_can_byte = 0x00 # Fallback
 
-        fc_pci = (PCI_TYPE_FC << 4) | (flow_status & 0x0F) # PCI: Type=FC, FS=flow_status
-        fc_data = [fc_pci, block_size & 0xFF, st_min_can_byte] # FC frame: PCI, BS, STmin
-
-        flow_status_str = {FC_STATUS_CTS: "CTS", FC_STATUS_WT: "WAIT", FC_STATUS_OVFLW: "OVFLW"}.get(flow_status, f"?({flow_status})")
-        self._log(f"Sending Flow Control ({flow_status_str}, BS={block_size}, STmin_raw={st_min_can_byte:02X} ({st_min_ms}ms)) to ID {fc_destination_id:03X}")
+        fc_pci = (PCI_TYPE_FC << 4) | (flow_status & 0x0F)
+        fc_data = [fc_pci, block_size & 0xFF, st_min_can_byte]
+        fs_str = {FC_STATUS_CTS:"CTS", FC_STATUS_WT:"WT", FC_STATUS_OVFLW:"OVFLW"}.get(flow_status,"?")
+        self._log(f"Sending Flow Control ({fs_str}, BS={block_size}, STmin={st_min_ms}ms -> byte 0x{st_min_can_byte:02X}) to ID {fc_destination_id:03X}")
         self._send_can_message(fc_destination_id, fc_data)
 
 
     def _reset_isotp_state(self):
         """Resets ISO-TP state variables. Assumes lock is held if called from multiple threads."""
-        # self._log("Resetting ISO-TP state") # Optional: for debugging state changes
         if self._isotp_state != ISOTPState.IDLE:
-            pass # Could log previous state if needed for debugging
+             pass # Optional: self._log(f"Resetting ISO-TP from state: {self._isotp_state.name}")
         self._isotp_state = ISOTPState.IDLE
         self._isotp_target_id = None
         self._isotp_buffer = []
         self._isotp_expected_len = 0
         self._isotp_frame_index = 0
-        self._isotp_flow_control_id = None
+        self._isotp_flow_control_id = None # ECU's response ID that initiated this ISO-TP session
         self._isotp_block_size = 0
         self._isotp_stmin = 0.0
         self._isotp_frames_since_fc = 0
 
-
+    # _parse_incoming_message
     def _parse_incoming_message(self, msg: can.Message):
-        """
-        Parses incoming diagnostic messages from the rx_queue.
-        Handles ISO-TP assembly for UDS messages and direct passthrough for KWP.
-        Puts fully assembled messages or KWP payloads onto self.response_queue.
-        """
+        """Parses incoming diagnostic messages, handling KWP and ISO-TP."""
         if not hasattr(msg, 'data') or not msg.data or msg.dlc == 0:
-            return # Ignore messages with no data
+            return
 
-        data_bytes = list(msg.data) # Convert to list for easier manipulation
+        data_bytes = list(msg.data)
         arbitration_id = msg.arbitration_id
 
         try:
-            # --- Handle non-UDS (e.g., KWP) responses first ---
-            if arbitration_id not in UDS_RESPONSE_IDS_FOR_ISOTP: # Check if ID is NOT for ISO-TP
-                 if arbitration_id == ABS_RESPONSE_ID: # KWP response from ABS
-                     # For KWP, we expect the payload to start after a potential length/format byte.
-                     # Assuming the first byte of data_bytes might be a length or format indicator not part of SID/payload.
-                     # The actual SID and data follow.
-                     # Example KWP response: [Len, SID, Data...] or [Format, SID, Data...]
-                     # We pass [SID, Data...] to the response queue.
-                     if msg.dlc >= 2: # KWP response must have at least SID byte (after a potential first byte)
-                        # Assuming SID is at data_bytes[1] for KWP messages from ABS_RESPONSE_ID
-                        kwp_payload_with_sid = data_bytes[1:msg.dlc] # Get payload from byte 1 up to DLC
-                        if kwp_payload_with_sid: # Ensure there's something to put
-                            self.response_queue.put(kwp_payload_with_sid)
-                        # else: # Optional: log if KWP payload part is empty after slicing
-                        #    self._log(f"Warning: KWP message from {arbitration_id:X} has empty payload after slicing. DLC={msg.dlc}, Data={data_bytes}")
-                     # else: # Optional: log if KWP response too short to contain SID + data
-                     #    self._log(f"Warning: Received KWP message from {arbitration_id:X} too short (DLC={msg.dlc}) to contain SID and data.")
-                 else:
-                     # Could be other non-ISO-TP diagnostic messages or broadcast data.
-                     # This function is primarily for diagnostic responses for send_command.
-                     pass
-                 return # Stop processing for non-ISO-TP IDs in this function
+            # Handle non-ISO-TP IDs first (e.g., KWP on ABS_RESPONSE_ID)
+            # UDS_RESPONSE_IDS_FOR_ISOTP is now corrected (excludes ABS_RESPONSE_ID)
+            if arbitration_id not in UDS_RESPONSE_IDS_FOR_ISOTP:
+                if arbitration_id == ABS_RESPONSE_ID:
+                    # KWP responses: Put payload starting from the SID byte onto the queue.
+                    # Example: Raw CAN [02 50 89 ...] (Len, SID, Data...) -> Queue gets [0x50, 0x89, ...]
+                    if msg.dlc >= 2: # KWP response should have at least format/len byte and SID byte
+                        payload_kwp = data_bytes[1:msg.dlc] # Assumes SID is data_bytes[1]
+                        if payload_kwp: # Ensure there's something to put
+                            self.response_queue.put(payload_kwp)
+                        # else: self._log(f"KWP (ABS) Warning: Empty payload after stripping assumed format byte for ID {arbitration_id:X}")
+                    # else: self._log(f"KWP (ABS) Warning: Message too short (DLC={msg.dlc}) for ID {arbitration_id:X}")
+                # else: # Other non-ISO-TP diagnostic IDs could be handled here if needed
+                #    self._log(f"Message from non-ISO-TP ID {arbitration_id:X} not processed by diagnostic parser.")
+                return # Stop processing for non-ISO-TP IDs handled here or ignored
 
-            # --- ISO-TP Logic for UDS IDs (e.g., UDS_RESPONSE_ID, TCU_RESPONSE_ID) ---
+            # --- ISO-TP Logic for UDS_RESPONSE_IDS_FOR_ISOTP ---
             pci_byte = data_bytes[0]
-            frame_type = (pci_byte >> 4) & 0x0F # Get PCI type (SF, FF, CF, FC)
+            frame_type = (pci_byte >> 4) & 0x0F
 
-            with self._isotp_lock: # Ensure thread-safe access to ISO-TP state
+            # Check for valid ISO-TP PCI type before acquiring lock for efficiency
+            if frame_type not in [PCI_TYPE_SF, PCI_TYPE_FF, PCI_TYPE_CF, PCI_TYPE_FC]:
+                # self._log(f"Ignoring non-ISO-TP frame from ISO-TP ID {arbitration_id:X}. PCI byte: {pci_byte:02X}")
+                return
+
+
+            with self._isotp_lock:
                 if self._isotp_state == ISOTPState.IDLE:
-                    if frame_type == PCI_TYPE_SF: # Single Frame
-                        self._handle_sf(arbitration_id, data_bytes, msg.dlc)
-                    elif frame_type == PCI_TYPE_FF: # First Frame
-                        self._handle_ff(arbitration_id, data_bytes, msg.dlc)
-                    elif frame_type == PCI_TYPE_CF: # Consecutive Frame (unexpected in IDLE)
-                         self._log(f"Warning: Received unexpected Consecutive Frame from ID {arbitration_id:X} in IDLE state. Resetting ISO-TP.")
-                         self._reset_isotp_state() # Reset state
-                    elif frame_type == PCI_TYPE_FC: # Flow Control (unexpected in IDLE from ECU)
-                         fs = pci_byte & 0x0F; flow_status_str = {0: "CTS", 1: "WAIT", 2: "OVFLW"}.get(fs, f"?({fs})")
-                         self._log(f"Warning: Received unexpected Flow Control from ID {arbitration_id:X} in IDLE state. FS={flow_status_str}. Ignoring.")
-                         # No state reset needed, just ignore it.
+                    if frame_type == PCI_TYPE_SF: self._handle_sf(arbitration_id, data_bytes, msg.dlc)
+                    elif frame_type == PCI_TYPE_FF: self._handle_ff(arbitration_id, data_bytes, msg.dlc)
+                    elif frame_type == PCI_TYPE_CF:
+                        self._log(f"Warn: Unexpected CF from ID {arbitration_id:X} in IDLE. Resetting."); self._reset_isotp_state()
+                    elif frame_type == PCI_TYPE_FC:
+                        # self._log(f"Warn: Unexpected FC from ID {arbitration_id:X} in IDLE. Handling.") # Can happen if ECU sends FC proactively
+                        self._handle_fc(arbitration_id, data_bytes) # Attempt to handle it
 
-                elif self._isotp_state == ISOTPState.WAIT_CF: # Waiting for Consecutive Frame
-                    if arbitration_id != self._isotp_target_id: # Message from unexpected ID
-                        # self._log(f"Debug: Ignoring message from {arbitration_id:X}, currently waiting for CF from {self._isotp_target_id:X}")
-                        return # Ignore messages from other IDs while assembling
+                elif self._isotp_state == ISOTPState.WAIT_CF:
+                    if arbitration_id != self._isotp_target_id:
+                        # self._log(f"Debug: Ignoring msg from {arbitration_id:X} while waiting for {self._isotp_target_id:X}")
+                        return # Ignore messages from other IDs while assembling a multi-frame response
 
-                    if frame_type == PCI_TYPE_CF: # Expected Consecutive Frame
-                        self._handle_cf(arbitration_id, data_bytes, msg.dlc)
-                    elif frame_type == PCI_TYPE_FC: # Flow Control (e.g., sender sends WAIT)
-                         # This can happen if the sender (ECU) sends a WAIT FC frame.
-                         self._log(f"Received Flow Control from {arbitration_id:X} while waiting for CF. Handling FC.")
-                         self._handle_fc(arbitration_id, data_bytes) # Process the FC frame
-                    else: # SF or FF received while waiting for CF (error condition)
-                        self._log(f"Error: Expected Consecutive Frame from {arbitration_id:X}, but received frame type {frame_type:X}. Resetting ISO-TP state.")
-                        self._reset_isotp_state() # Reset state due to protocol error
+                    if frame_type == PCI_TYPE_CF: self._handle_cf(arbitration_id, data_bytes, msg.dlc)
+                    elif frame_type == PCI_TYPE_FC:
+                        # self._log(f"Received FC from {arbitration_id:X} while in WAIT_CF. Handling.")
+                        self._handle_fc(arbitration_id, data_bytes) # Handle FC (e.g., a WAIT frame)
+                    else: # SF or FF received while expecting CF
+                        self._log(f"Error: Expected CF from {arbitration_id:X}, got PCI type {frame_type:X}. Resetting ISO-TP.")
+                        self._reset_isotp_state()
                         # Attempt to process the new frame if it's a start frame (SF or FF)
                         if frame_type == PCI_TYPE_SF: self._handle_sf(arbitration_id, data_bytes, msg.dlc)
                         elif frame_type == PCI_TYPE_FF: self._handle_ff(arbitration_id, data_bytes, msg.dlc)
-                # Note: ISOTPState.WAIT_FC is typically used when *we* are the SENDER of a multi-frame message
-                # and are waiting for an FC from the ECU. This function handles *incoming* messages.
-                # If we receive an FC while in WAIT_FC (meaning we are sending), _handle_fc would be called.
 
-        except IndexError as e: # Error accessing data_bytes elements
-             self._log(f"Error parsing incoming message (IndexError): {e}, Data: {bytes(msg.data).hex()}, ID: {arbitration_id:X}")
-             with self._isotp_lock: self._reset_isotp_state() # Reset ISO-TP state on error
-        except Exception as e: # Other unexpected errors
-             self._log(f"Unexpected error parsing incoming message: {type(e).__name__}: {e}, Data: {bytes(msg.data).hex()}, ID: {arbitration_id:X}")
-             # traceback.print_exc() # For debugging
-             with self._isotp_lock: self._reset_isotp_state() # Reset ISO-TP state on error
+                elif self._isotp_state == ISOTPState.WAIT_FC: # We are sending, and waiting for an FC from receiver
+                    if frame_type == PCI_TYPE_FC:
+                        self._handle_fc(arbitration_id, data_bytes)
+                    else:
+                        self._log(f"Warn: Expected FC but received PCI type {frame_type:X} from {arbitration_id:X} while in WAIT_FC. Ignoring.")
+                # else: self._log(f"Warn: Message from {arbitration_id:X} received in unhandled ISO-TP state: {self._isotp_state.name}")
 
+        except IndexError as e:
+            self._log(f"Parse Error (Index): {e}, Data: {bytes(msg.data).hex()}, ID: {arbitration_id:X}")
+            with self._isotp_lock: self._reset_isotp_state()
+        except Exception as e:
+            self._log(f"Parse Error (Unexpected): {type(e).__name__} - {e}, Data: {bytes(msg.data).hex()}, ID: {arbitration_id:X}")
+            with self._isotp_lock: self._reset_isotp_state()
+
+    # --- ISO-TP Frame Handlers (Reverted to Original logic for queue format) ---
 
     def _handle_sf(self, arbitration_id: int, data_bytes: List[int], dlc: int):
-        """Handles an ISO-TP Single Frame. Assumes isotp_lock is held."""
+        """Handles an ISO-TP Single Frame. Puts [PCI_byte(s), SID, data...] on response_queue."""
         pci_byte_val = data_bytes[0]
-        length = pci_byte_val & 0x0F # Length is in lower nibble of first PCI byte
-        payload_start_index = 1 # Payload starts after the first PCI byte
+        length = pci_byte_val & 0x0F
+        payload_data_start_index = 1 # Index of SID in data_bytes after this PCI
 
-        if length == 0: # SF with length escape (length in the second byte)
-            if dlc < 2: # Need at least 2 bytes for PCI (0x00) and actual length
-                self._log(f"Error: UDS Single Frame (with length escape) DLC {dlc} < 2 for ID {arbitration_id:X}. Discarding.")
-                return
-            length = data_bytes[1] # Actual length is in the second byte
-            payload_start_index = 2 # Payload starts after PCI (0x00) and length byte
-            if length == 0: # Invalid: actual length cannot be 0 after escape
-                self._log(f"Error: UDS Single Frame (with length escape) actual length is 0 for ID {arbitration_id:X}. Discarding.")
-                return
-        # Standard CAN (non-FD) SF length is 1-7 bytes.
-        # python-can's Message object uses DLC for actual data length.
-        # Here, 'length' is the declared payload length in PCI.
-        elif length > 7: # For standard CAN, SF payload length > 7 is invalid.
-            self._log(f"Error: Invalid UDS Single Frame PCI length {length} (PCI: {pci_byte_val:02X}) for non-FD CAN ID {arbitration_id:X}. Discarding.")
-            return
+        if length == 0: # SF with length escape
+            if dlc < 2:
+                self._log(f"Error: ISO-TP SF (LL) DLC {dlc} < 2 for ID {arbitration_id:X}. Discarding.")
+                self._reset_isotp_state(); return
+            length = data_bytes[1] # Actual length of diagnostic payload (SID + data)
+            payload_data_start_index = 2 # Index of SID in data_bytes after PCI (0x00) and length byte
+            if length == 0:
+                self._log(f"Error: ISO-TP SF (LL) actual diagnostic payload length is 0 for ID {arbitration_id:X}. Discarding.")
+                self._reset_isotp_state(); return
+        elif length > 7: # For standard CAN (non-FD SF PCI length cannot be > 7)
+            self._log(f"Error: Invalid ISO-TP SF PCI length {length} (PCI: {pci_byte_val:02X}) for ID {arbitration_id:X}. Discarding.")
+            self._reset_isotp_state(); return
 
-        # Minimum DLC required for the declared payload length
-        expected_dlc_for_payload = length + payload_start_index
-        # Check if DLC is sufficient for the declared payload length.
-        # Allow DLC=8 even if payload is shorter (due to CAN frame padding).
-        if dlc < expected_dlc_for_payload and dlc != 8 : # Common case: DLC matches payload + PCI bytes
-             self._log(f"Error: UDS Single Frame DLC {dlc} is less than required {expected_dlc_for_payload} for declared length {length} (PCI: {pci_byte_val:02X}) for ID {arbitration_id:X}. Discarding.")
-             return
+        # Minimum DLC needed for the PCI bytes + declared diagnostic payload length
+        expected_min_dlc_for_pci_and_payload = length + payload_data_start_index
 
-        # Extract payload, ensuring not to read past the actual DLC of the CAN frame
-        # The actual number of payload bytes available is dlc - payload_start_index
-        # We should only take 'length' bytes as declared in PCI, or fewer if DLC is smaller.
-        actual_payload_bytes_in_frame = dlc - payload_start_index
-        payload_to_extract_count = min(length, actual_payload_bytes_in_frame)
+        if dlc < expected_min_dlc_for_pci_and_payload:
+            self._log(f"Error: ISO-TP SF DLC {dlc} is less than required {expected_min_dlc_for_pci_and_payload} for declared diag payload length {length} (PCI: {pci_byte_val:02X}) for ID {arbitration_id:X}. Discarding.")
+            self._reset_isotp_state(); return
 
-        payload = data_bytes[payload_start_index : payload_start_index + payload_to_extract_count]
+        # Number of actual diagnostic payload bytes available in this CAN frame
+        actual_diagnostic_payload_bytes_in_frame = dlc - payload_data_start_index
+        # We should only take 'length' bytes as declared in PCI for the diagnostic payload
+        diagnostic_payload_to_extract_count = min(length, actual_diagnostic_payload_bytes_in_frame)
 
-        # Queue format for SF: [pci_byte(s), payload_sid, payload_data...]
-        if payload_start_index == 1: # Normal SF (PCI is one byte)
-            response_entry = [pci_byte_val] + payload
-        else: # SF with length escape (PCI is 0x00 followed by actual length byte)
-            response_entry = [0x00, length] + payload # Store 0x00 and actual length as PCI part
+        # diagnostic_payload should be [SID, data_byte1, data_byte2,...]
+        diagnostic_payload_content = data_bytes[payload_data_start_index : payload_data_start_index + diagnostic_payload_to_extract_count]
+
+        if not diagnostic_payload_content:
+            self._log(f"SF Warning: Empty diagnostic payload extracted for ID {arbitration_id:X}, PCI: {pci_byte_val:02X}, DeclaredLen: {length}")
+            self._reset_isotp_state(); return # Or handle as error appropriately
+
+        # Construct response_entry WITH PCI information, as per original logic
+        if payload_data_start_index == 1: # Normal SF (PCI byte was data_bytes[0])
+            response_entry = [pci_byte_val] + diagnostic_payload_content
+        else: # SF with length escape (PCI bytes were data_bytes[0] and data_bytes[1])
+            response_entry = [data_bytes[0], data_bytes[1]] + diagnostic_payload_content
 
         self.response_queue.put(response_entry)
-        # self._log(f"SF Processed: ID={arbitration_id:X}, Data on Q: {response_entry}") # Debug
+        # self._log(f"SF Processed: ID={arbitration_id:X}, Data on Q: {response_entry}")
         self._reset_isotp_state() # SF is a complete message
-
 
     def _handle_ff(self, arbitration_id: int, data_bytes: List[int], dlc: int):
         """Handles an ISO-TP First Frame. Assumes isotp_lock is held."""
         if dlc < 2: # FF needs at least 2 bytes for PCI (type+len_high, len_low)
             self._log(f"Error: UDS First Frame DLC {dlc} < 2 for ID {arbitration_id:X}. Resetting ISO-TP.")
+            self._reset_isotp_state(); return
+
+        pci_byte_ff_val = data_bytes[0] # Contains FF type (0x1) and high nibble of length
+        len_high_nibble = pci_byte_ff_val & 0x0F
+        self._isotp_expected_len = (len_high_nibble << 8) + data_bytes[1] # Full expected *diagnostic* payload length
+        diagnostic_payload_start_index = 2 # Diagnostic payload in FF starts after the two PCI bytes
+
+        if self._isotp_expected_len == 0 or self._isotp_expected_len > 4095: # ISO-TP max length
+            self._log(f"Error: Invalid or unsupported UDS First Frame length {self._isotp_expected_len} for ID {arbitration_id:X}. Resetting ISO-TP.")
+            self._reset_isotp_state(); return
+
+        if dlc < diagnostic_payload_start_index: # DLC too short to even contain the FF PCI
+            self._log(f"Error: UDS First Frame DLC {dlc} is less than header size {diagnostic_payload_start_index} for ID {arbitration_id:X}. Resetting ISO-TP.")
+            self._reset_isotp_state(); return
+
+        # Extract initial part of diagnostic payload from the First Frame
+        self._isotp_buffer = data_bytes[diagnostic_payload_start_index : dlc]
+
+        if len(self._isotp_buffer) >= self._isotp_expected_len: # Entire message in FF
+            final_diagnostic_payload = self._isotp_buffer[:self._isotp_expected_len]
+            # Queue format: [ff_pci_byte, len_low_byte, SID, data...]
+            response_entry = [pci_byte_ff_val, data_bytes[1]] + final_diagnostic_payload
+            if final_diagnostic_payload : self.response_queue.put(response_entry)
+            # else: self._log(f"FF (Complete) Warning: Empty final diagnostic payload for ID {arbitration_id:X}")
             self._reset_isotp_state()
-            return
-
-        pci_byte_ff = data_bytes[0] # Contains FF type (0x1) and high nibble of length
-        len_high_nibble = pci_byte_ff & 0x0F
-        self._isotp_expected_len = (len_high_nibble << 8) + data_bytes[1] # Full expected payload length
-        payload_start_index = 2 # Payload in FF starts after the two PCI bytes
-
-        # ISO-TP max length is 4095 (0xFFF) for a 12-bit length field
-        if self._isotp_expected_len == 0 or self._isotp_expected_len > 4095:
-              self._log(f"Error: Invalid or unsupported UDS First Frame length {self._isotp_expected_len} for ID {arbitration_id:X}. Resetting ISO-TP.")
-              self._reset_isotp_state()
-              return
-
-        if dlc < payload_start_index: # DLC too short to even contain the FF PCI
-            self._log(f"Error: UDS First Frame DLC {dlc} is less than header size {payload_start_index} for ID {arbitration_id:X}. Resetting ISO-TP.")
-            self._reset_isotp_state()
-            return
-
-        # Extract initial payload data from the First Frame
-        # Max 6 bytes of payload in FF for standard CAN (8 byte frame - 2 PCI bytes)
-        ff_payload_len = dlc - payload_start_index
-        self._isotp_buffer = data_bytes[payload_start_index : dlc] # Store initial part of payload
-
-        # Check if FF contains the entire message (possible if <= 6 bytes)
-        if len(self._isotp_buffer) >= self._isotp_expected_len:
-            final_payload = self._isotp_buffer[:self._isotp_expected_len] # Truncate if buffer is longer
-            # Queue format for assembled MF (same as FF structure): [ff_pci_byte, len_low_byte, SID, payload_data...]
-            response_entry = [pci_byte_ff, data_bytes[1]] + final_payload
-            self.response_queue.put(response_entry)
-            # self._log(f"FF (Complete) Processed: ID={arbitration_id:X}, Data on Q: {response_entry}") # Debug
-            self._reset_isotp_state() # Message complete
-        else:
-            # Prepare for Consecutive Frames
-            self._isotp_frame_index = 1 # Expect CF with index 1 next
+        else: # Prepare for Consecutive Frames
+            self._isotp_frame_index = 1
             self._isotp_state = ISOTPState.WAIT_CF
-            self._isotp_target_id = arbitration_id # Expect subsequent frames from this ID
-            self._isotp_flow_control_id = arbitration_id # ID of the ECU that sent the FF (used to derive FC destination)
+            self._isotp_target_id = arbitration_id
+            self._isotp_flow_control_id = arbitration_id # ECU's response ID that sent the FF
             self._isotp_frames_since_fc = 0
-            self._isotp_block_size = 0 # Default: Wait for FC from sender if they send one, or send all if BS=0 in their FC
-            self._isotp_stmin = 0.0    # Default: No delay if not specified in FC
-
-            # Send initial Flow Control (CTS) to indicate readiness for CFs
-            # Block Size (BS) = 0: Send all frames without waiting for another FC from us.
-            # Separation Time (STmin) = 0: No delay required between CFs from sender.
-            # These are typical initial FC parameters from a receiver.
+            # Default BS=0 (send all), STmin=0 (no delay) for our initial FC response
             self._send_flow_control(flow_status=FC_STATUS_CTS, block_size=0, st_min_ms=0)
-            # self._log(f"FF Processed, waiting for CFs: ID={arbitration_id:X}, ExpLen={self._isotp_expected_len}, Buffered={len(self._isotp_buffer)}") # Debug
-
+            # self._log(f"FF Processed, sent FC, waiting for CFs: ID={arbitration_id:X}, ExpLen={self._isotp_expected_len}, Buffered={len(self._isotp_buffer)}")
 
     def _handle_cf(self, arbitration_id: int, data_bytes: List[int], dlc: int):
         """Handles an ISO-TP Consecutive Frame. Assumes isotp_lock is held."""
         if dlc < 1: # CF needs at least 1 byte for PCI (type + index)
             self._log(f"Error: UDS Consecutive Frame DLC {dlc} < 1 for ID {arbitration_id:X}. Resetting ISO-TP.")
-            self._reset_isotp_state()
-            return
+            self._reset_isotp_state(); return
 
         pci_byte_cf = data_bytes[0]
-        current_index = pci_byte_cf & 0x0F # Lower nibble is the frame index (0-15)
-        expected_wrapped_index = self._isotp_frame_index % 16 # Wrap expected index for comparison
+        current_index = pci_byte_cf & 0x0F
+        expected_wrapped_index = self._isotp_frame_index % 16
 
         if current_index != expected_wrapped_index:
-            self._log(f"Error: UDS Consecutive Frame index mismatch for ID {arbitration_id:X}. Expected index {expected_wrapped_index}, got {current_index}. Resetting ISO-TP.")
-            self._reset_isotp_state()
-            return
+            self._log(f"Error: UDS Consecutive Frame index mismatch for ID {arbitration_id:X}. Expected {expected_wrapped_index}, got {current_index}. Resetting ISO-TP.")
+            self._reset_isotp_state(); return
 
-        # Append payload data from CF (byte 1 onwards, up to DLC limit)
-        # Max 7 bytes of payload in CF for standard CAN (8 byte frame - 1 PCI byte)
-        payload_in_cf = data_bytes[1 : dlc]
-        self._isotp_buffer.extend(payload_in_cf)
+        # Append diagnostic payload data from CF (byte 1 onwards)
+        self._isotp_buffer.extend(data_bytes[1 : dlc])
         self._isotp_frame_index += 1
         self._isotp_frames_since_fc += 1
 
-        # Check if the full message is received
-        if len(self._isotp_buffer) >= self._isotp_expected_len:
-            final_payload = self._isotp_buffer[:self._isotp_expected_len] # Truncate if buffer is longer
-            # Reconstruct the FF PCI and length bytes for consistency in queue format
-            # This makes parsing in send_command easier as it always expects FF-like structure for MF.
-            len_high_nibble = (self._isotp_expected_len >> 8) & 0x0F
-            len_low_byte = self._isotp_expected_len & 0xFF
-            reconstructed_ff_pci = (PCI_TYPE_FF << 4) | len_high_nibble # PCI type FF + high nibble of total length
-            # Queue format: [reconstructed_ff_pci, len_low_byte, SID, payload_data...]
-            response_entry = [reconstructed_ff_pci, len_low_byte] + final_payload
-            self.response_queue.put(response_entry);
-            # self._log(f"CF (Complete) Processed: ID={arbitration_id:X}, Data on Q: {response_entry}") # Debug
-            self._reset_isotp_state() # Reset state after completion
-        # Check if we need to send another Flow Control (if Block Size was set by sender's FC)
-        elif self._isotp_block_size > 0 and self._isotp_frames_since_fc >= self._isotp_block_size:
-            self._isotp_frames_since_fc = 0 # Reset counter for this block
-            # Send CTS Flow Control with the same BS and STmin values we received from sender
-            st_min_ms_int = int(self._isotp_stmin * 1000) # Convert STmin (seconds) back to ms for sending
-            self._send_flow_control(flow_status=FC_STATUS_CTS, block_size=self._isotp_block_size, st_min_ms=st_min_ms_int)
-            # self._log(f"CF Processed, sent next FC: ID={arbitration_id:X}, Buffered={len(self._isotp_buffer)}") # Debug
+        if len(self._isotp_buffer) >= self._isotp_expected_len: # Full message received
+            final_diagnostic_payload = self._isotp_buffer[:self._isotp_expected_len]
 
+            # Reconstruct FF PCI bytes to prepend to the assembled payload for queue consistency (Original logic)
+            len_high_nibble = (self._isotp_expected_len >> 8) & 0x0F
+            ff_pci_reconstructed = (PCI_TYPE_FF << 4) | len_high_nibble
+            len_low_byte_reconstructed = self._isotp_expected_len & 0xFF
+            # Queue format: [ff_pci_byte, len_low_byte, SID, data...]
+            response_entry = [ff_pci_reconstructed, len_low_byte_reconstructed] + final_diagnostic_payload
+
+            if final_diagnostic_payload: self.response_queue.put(response_entry)
+            # else: self._log(f"CF (Complete) Warning: Empty final diagnostic payload for ID {arbitration_id:X}")
+            self._reset_isotp_state()
+        elif self._isotp_block_size > 0 and self._isotp_frames_since_fc >= self._isotp_block_size:
+            # We (receiver) have received a full block, send another FC
+            self._isotp_frames_since_fc = 0
+            st_min_ms_int = int(self._isotp_stmin * 1000) # Use STmin set by sender's FC
+            self._send_flow_control(flow_status=FC_STATUS_CTS, block_size=self._isotp_block_size, st_min_ms=st_min_ms_int)
+            # self._log(f"CF Processed, sent next FC: ID={arbitration_id:X}, Buffered={len(self._isotp_buffer)}")
 
     def _handle_fc(self, arbitration_id: int, data_bytes: List[int]):
         """
         Handles an incoming ISO-TP Flow Control frame. Assumes isotp_lock is held.
-        This is relevant if *we* are sending a multi-frame message and receive an FC from the ECU.
-        Or, if the ECU sends an FC (e.g., WAIT) while we are receiving CFs.
+        This is relevant if *we* are sending a multi-frame message and receive an FC from the ECU,
+        OR if the ECU (sender) sends an FC (e.g., WAIT) while we are receiving CFs.
         """
         if len(data_bytes) < 3: # FC needs PCI, BS, STmin
             self._log(f"Warning: Short Flow Control frame received from {arbitration_id:X}. Length {len(data_bytes)}. Ignoring.")
             return
 
         pci_byte_fc = data_bytes[0]
-        flow_status = pci_byte_fc & 0x0F # FS: Flow Status (CTS, WAIT, OVFLW)
-        block_size_rcvd = data_bytes[1] # BS: Block Size
-        st_min_raw_rcvd = data_bytes[2] # STmin: Separation Time Minimum
+        flow_status = pci_byte_fc & 0x0F
+        block_size_rcvd = data_bytes[1]
+        st_min_raw_rcvd = data_bytes[2]
 
-        # Decode STmin (Separation Time Minimum) from received raw byte
-        if 0 <= st_min_raw_rcvd <= 0x7F: # 0-127 ms
-            st_min_ms = st_min_raw_rcvd
-        elif 0xF1 <= st_min_raw_rcvd <= 0xF9: # 100-900 microseconds
-            st_min_ms = (st_min_raw_rcvd - 0xF0) * 0.1 # Convert 0.1ms units to ms
-        else: # Value is reserved or out of typical range
-            self._log(f"Warning: Received FC with STmin raw value {st_min_raw_rcvd:02X} (reserved/invalid). Using 127ms default.")
-            st_min_ms = 127 # Per spec, treat reserved/invalid values as max standard value (127ms)
-
-        st_min_sec = st_min_ms / 1000.0 # Convert to seconds for internal use
-
-        flow_status_str = {FC_STATUS_CTS: "CTS", FC_STATUS_WT: "WAIT", FC_STATUS_OVFLW: "OVFLW"}.get(flow_status, f"?({flow_status})")
-        # self._log(f"Received Flow Control from {arbitration_id:X}: FS={flow_status_str}, BS={block_size_rcvd}, STmin_raw={st_min_raw_rcvd:02X} ({st_min_ms:.1f}ms)") # Verbose
-
-        # If we are currently waiting for CF frames (i.e., we are the receiver of a multi-frame message)
-        # and this FC is from the ECU we are talking to.
-        if self._isotp_state == ISOTPState.WAIT_CF and arbitration_id == self._isotp_target_id:
-             if flow_status == FC_STATUS_CTS:
-                 # The sender (ECU) is telling us its parameters for sending CFs.
-                 # We should store these if we were the sender, but as receiver, this is unusual.
-                 # More likely, if we sent an FF, the ECU sends an FC back.
-                 # If we are in WAIT_CF, it means *we* sent an FF and are waiting for CFs from ECU.
-                 # So, an FC from ECU here might be a WAIT or OVFLW.
-                 # If it's CTS, it's a bit odd unless it's a re-send of their initial FC.
-                 self._isotp_block_size = block_size_rcvd # Store sender's BS preference
-                 self._isotp_stmin = st_min_sec # Store sender's STmin preference
-                 self._isotp_frames_since_fc = 0 # Reset counter as we received a new FC from them
-                 # self._log(f"  -> Updated receiver's understanding of sender's params: BS={block_size_rcvd}, STmin={st_min_sec:.3f}s")
-             elif flow_status == FC_STATUS_WT: # Sender (ECU) is asking us to wait
-                 self._log(f"Received WAIT Flow Control from sender {arbitration_id:X}. Pausing reception (not fully implemented, continuing to listen).")
-                 # TODO: Implement actual wait logic if required (e.g., set a timer before expecting more CFs or re-sending FC after timeout)
-             elif flow_status == FC_STATUS_OVFLW: # Sender (ECU) reports overflow
-                 self._log(f"Error: Sender {arbitration_id:X} reported OVFLW (Overflow). Resetting ISO-TP state.")
-                 self._reset_isotp_state() # Critical error, reset transaction
-        # If we are the SENDER and waiting for an FC (ISOTPState.WAIT_FC)
-        elif self._isotp_state == ISOTPState.WAIT_FC: # This state is more for when *we* are sending
-            # This means we sent an FF or a block of CFs, and now ECU is responding with FC.
-            self._isotp_block_size = block_size_rcvd
-            self._isotp_stmin = st_min_sec
-            # Transition out of WAIT_FC based on flow_status, and continue sending CFs if CTS.
-            # This part of logic would be in the sending loop, not here in _parse_incoming_message.
-            # For now, just log that we received it.
-            # self._log(f"  -> FC received while in WAIT_FC state (likely as sender). BS={block_size_rcvd}, STmin={st_min_sec:.3f}s")
-            pass
+        st_min_ms = 0.0
+        if 0 <= st_min_raw_rcvd <= 0x7F: st_min_ms = float(st_min_raw_rcvd)
+        elif 0xF1 <= st_min_raw_rcvd <= 0xF9: st_min_ms = (st_min_raw_rcvd - 0xF0) * 0.1
         else:
-            # Received FC in an unexpected state (e.g., IDLE) or from an unexpected ID.
+            self._log(f"Warning: Received FC with STmin raw value {st_min_raw_rcvd:02X} (reserved/invalid). Using 127ms default.")
+            st_min_ms = 127.0
+
+        st_min_sec = st_min_ms / 1000.0
+        flow_status_str = {FC_STATUS_CTS: "CTS", FC_STATUS_WT: "WAIT", FC_STATUS_OVFLW: "OVFLW"}.get(flow_status, f"?({flow_status})")
+        # self._log(f"Received Flow Control from {arbitration_id:X}: FS={flow_status_str}, BS={block_size_rcvd}, STmin_raw={st_min_raw_rcvd:02X} ({st_min_ms:.1f}ms)")
+
+        if self._isotp_state == ISOTPState.WAIT_CF and arbitration_id == self._isotp_target_id:
+            # We are RECEIVING, and sender (ECU) sent an FC (e.g. WAIT or to update params)
+            if flow_status == FC_STATUS_CTS:
+                # Sender is confirming its parameters, or re-sending CTS. Store them.
+                self._isotp_block_size = block_size_rcvd # How many CFs sender will send before next FC from us
+                self._isotp_stmin = st_min_sec         # Min time sender wants between our FCs (not directly used by us as receiver here)
+                                                      # More accurately, STmin in an FC from sender to us (receiver)
+                                                      # tells *us* the minimum time *they* will wait between *their CFs*.
+                                                      # This should be used to time our processing/FC responses if needed,
+                                                      # but typically the sender just sends based on our FC.
+                                                      # Let's assume this STmin from ECU's FC is for *their* CF transmission rate.
+                self._isotp_frames_since_fc = 0 # Reset counter if they are confirming params
+                # self._log(f"  -> Sender {arbitration_id:X} FC updated our receiver state: Their_BS={block_size_rcvd}, Their_CF_STmin={st_min_sec:.3f}s")
+            elif flow_status == FC_STATUS_WT:
+                self._log(f"Received WAIT Flow Control from sender {arbitration_id:X}. Pausing reception logic may be needed (currently, listener continues).")
+                # TODO: Implement actual wait logic if required (e.g., set a timer before expecting more CFs or re-sending our FC after a timeout)
+            elif flow_status == FC_STATUS_OVFLW:
+                self._log(f"Error: Sender {arbitration_id:X} reported OVFLW (Overflow). Resetting ISO-TP state.")
+                self._reset_isotp_state()
+
+        elif self._isotp_state == ISOTPState.WAIT_FC: # We are SENDING, and this is the FC from the receiver (ECU)
+            # self._log(f"FC received while in WAIT_FC (we are sender). FS={flow_status_str}, BS={block_size_rcvd}, STmin={st_min_sec:.3f}s for ECU {arbitration_id:X}")
+            if flow_status == FC_STATUS_CTS:
+                self._isotp_block_size = block_size_rcvd # How many CFs we can send before next FC from ECU
+                self._isotp_stmin = st_min_sec         # Min time we must wait between our CFs
+                self._isotp_frames_since_fc = 0       # Reset counter for CFs we've sent in current block
+                self._isotp_state = ISOTPState.IDLE # Or a new state like SENDING_CFS. For now, IDLE, send loop will handle it.
+                # The actual sending of next block of CFs would be handled by the sending logic, not here.
+            elif flow_status == FC_STATUS_WT:
+                self._log(f"Receiver {arbitration_id:X} sent WAIT. We (sender) must pause sending CFs.")
+                # TODO: Implement logic in the sending part to handle WAIT (e.g., timer, retry FC)
+            elif flow_status == FC_STATUS_OVFLW:
+                self._log(f"Error: Receiver {arbitration_id:X} (ECU) reported OVFLW. Aborting send operation.")
+                self._reset_isotp_state() # Stop sending
+        # else:
             # self._log(f"Warning: Received Flow Control from {arbitration_id:X} in unexpected ISO-TP state ({self._isotp_state.name}). Ignoring.")
-            pass
 
 
     def register_live_dashboard_processor(self, processor: Optional[ILiveDataProcessor]):
         """Registers or unregisters the live dashboard data processor."""
         if processor is None:
-            if self.live_dashboard_processor: # Only log if there was one to unregister
+            if self.live_dashboard_processor:
                 self._log("Unregistering live dashboard processor.")
             self.live_dashboard_processor = None
         elif hasattr(processor, 'TARGET_IDS') and callable(getattr(processor, 'process_message', None)):
-             target_ids_str = ", ".join(f"{tid:X}" for tid in processor.TARGET_IDS) if processor.TARGET_IDS else "All (if supported by processor)"
-             self._log(f"Registering live dashboard processor targeting IDs: {target_ids_str}")
-             self.live_dashboard_processor = processor
+            target_ids_str = ", ".join(f"{tid:X}" for tid in processor.TARGET_IDS) if processor.TARGET_IDS else "All (if supported)"
+            self._log(f"Registering live dashboard processor targeting IDs: {target_ids_str}")
+            self.live_dashboard_processor = processor
         else:
-             self._log("Error: Invalid live dashboard processor passed (missing TARGET_IDS or process_message).")
-             self.live_dashboard_processor = None
+            self._log("Error: Invalid live dashboard processor passed (missing TARGET_IDS or process_message).")
+            self.live_dashboard_processor = None
 
+    # register_expert_raw_processor
     def register_expert_raw_processor(self, processor: Optional[ICanRawMessageProcessor]):
         """Registers or unregisters a raw CAN message processor for the expert tab."""
         if processor:
             self._log(f"Registering expert raw CAN processor: {type(processor).__name__}")
         else:
-            if self.expert_raw_processor: # Only log if there was one to unregister
-                 self._log(f"Unregistering expert raw CAN processor: {type(self.expert_raw_processor).__name__}")
+            if self.expert_raw_processor:
+                self._log(f"Unregistering expert raw CAN processor: {type(self.expert_raw_processor).__name__}")
         self.expert_raw_processor = processor
 
+    # send_custom_can_message
     def send_custom_can_message(self, arbitration_id: int, data: Union[List[int], bytes], is_extended: bool = False, is_remote: bool = False) -> bool:
         """
-        Sends a custom CAN message.
-        This is a public method intended for use by features like the CAN Expert Tab.
-        It directly calls the internal _send_can_message.
+        Sends a custom CAN message. Public method for features like CAN Expert Tab.
         """
         if not self.is_connected or not self.bus:
             self._log("Error: Cannot send custom CAN message, not connected.")
             return False
-        
-        # The _send_can_message already logs the attempt.
-        # self._log(f"Attempting custom send: ID={arbitration_id:X}, Data={bytes(data).hex().upper()}, Ext={is_extended}, RTR={is_remote}")
-        # MODIFIED Call to pass is_remote
+        # _send_can_message already logs the attempt.
         return self._send_can_message(arbitration_id, data, is_extended, is_remote)

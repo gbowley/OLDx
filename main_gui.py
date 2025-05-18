@@ -130,7 +130,7 @@ class CarDiagnosticsApp:
         self.connect_button = ttk.Button(conn_frame, text="Connect", command=self.toggle_connection, width=12)
         self.connect_button.grid(row=0, column=6, padx=(20, 5), pady=5, sticky=tk.E)
 
-        self.status_label = ttk.Label(conn_frame, text="Status: Disconnected", foreground="red", font=('Segoe UI', 10, 'bold'), anchor=tk.E)
+        self.status_label = ttk.Label(conn_frame, text="Status: Disconnected", foreground="red", anchor=tk.E)
         self.status_label.grid(row=0, column=7, padx=(5, 0), pady=5, sticky=tk.EW)
 
         # --- Vehicle Info Frame (Below Connection) ---
@@ -223,7 +223,7 @@ class CarDiagnosticsApp:
         text_display_frame = ttk.Frame(self.log_frame) # Frame to hold text and scrollbar
         text_display_frame.pack(expand=True, fill=tk.BOTH)
 
-        self.log_text = scrolledtext.ScrolledText(text_display_frame, height=20, width=90, state=tk.DISABLED, wrap=tk.WORD, font=("Consolas", 9))
+        self.log_text = scrolledtext.ScrolledText(text_display_frame, height=20, width=90, state=tk.DISABLED, wrap=tk.WORD)
         self.log_text.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
         
         scrollbar = ttk.Scrollbar(text_display_frame, orient=tk.VERTICAL, command=self.log_text.yview)
@@ -626,7 +626,7 @@ class CarDiagnosticsApp:
         ttk.Label(self.faults_frame, text="Detected Faults (DTCs):").pack(anchor=tk.W, pady=(10, 2))
         list_frame = ttk.Frame(self.faults_frame) # Frame for listbox and scrollbar
         list_frame.pack(expand=True, fill=tk.BOTH, pady=(0,5))
-        self.faults_list = tk.Listbox(list_frame, height=15, width=90, font=("Consolas", 9), selectmode=tk.EXTENDED)
+        self.faults_list = tk.Listbox(list_frame, height=15, width=90, selectmode=tk.EXTENDED)
         scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.faults_list.yview)
         self.faults_list.config(yscrollcommand=scrollbar.set)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -674,7 +674,7 @@ class CarDiagnosticsApp:
             messages = fault_data[module_name]
             if messages: # If there are messages for this module
                 self.faults_list.insert(tk.END, f"--- {module_name} ---")
-                self.faults_list.itemconfig(line_count, {'fg': 'navy', 'font': ("Consolas", 9, "bold")})
+                self.faults_list.itemconfig(line_count, fg='navy')
                 line_count += 1
                 for msg_index, msg_text in enumerate(messages):
                     self.faults_list.insert(tk.END, f"  {msg_text}")
@@ -701,7 +701,7 @@ class CarDiagnosticsApp:
         
         if not has_actual_faults and line_count > 0: # If iterated through modules but found no red faults
             self.faults_list.insert(tk.END, ">>> No active faults reported by responding/queried modules. <<<")
-            self.faults_list.itemconfig(tk.END, {'fg': 'green', 'font': ("Consolas", 9, "italic")})
+            self.faults_list.itemconfig(tk.END, {'fg': 'green'})
         elif line_count == 0: # If fault_data was not None but somehow resulted in no lines
              self.faults_list.insert(tk.END, "No data to display.")
 
@@ -801,7 +801,7 @@ class CarDiagnosticsApp:
             
             # Value display widget (readonly, styled like an entry)
             value_widget = ttk.Label(data_items_frame, textvariable=string_var, anchor=tk.W, width=value_width_chars,
-                                     relief=tk.SUNKEN, borderwidth=1, padding=(3,1), font=('Segoe UI', 9))
+                                     relief=tk.SUNKEN, borderwidth=1, padding=(3,1))
             value_widget.grid(row=current_row, column=current_col_pair*2 + 1, sticky=tk.EW, padx=(0,10), pady=3)
             
             # Configure column weight for the value part to expand
@@ -1003,7 +1003,7 @@ class CarDiagnosticsApp:
         
         text_display_frame = ttk.Frame(self.perf_frame) # Frame for text and scrollbar
         text_display_frame.pack(expand=True, fill=tk.BOTH, pady=(0,5))
-        self.perf_text = scrolledtext.ScrolledText(text_display_frame, height=20, width=90, state=tk.DISABLED, wrap=tk.WORD, font=("Consolas", 9))
+        self.perf_text = scrolledtext.ScrolledText(text_display_frame, height=20, width=90, state=tk.DISABLED, wrap=tk.WORD)
         scrollbar = ttk.Scrollbar(text_display_frame, orient=tk.VERTICAL, command=self.perf_text.yview)
         self.perf_text['yscrollcommand'] = scrollbar.set
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -1057,7 +1057,7 @@ class CarDiagnosticsApp:
             else: max_label_len = 30
 
             # Define tags for styling
-            self.perf_text.tag_configure("header_style", font=("Segoe UI", 9, "bold"), foreground="navy")
+            self.perf_text.tag_configure("header_style", foreground="navy")
             self.perf_text.tag_configure("error_value_style", foreground="orange")
 
             for label, value_str in perf_data.items():

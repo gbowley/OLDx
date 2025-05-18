@@ -21,7 +21,7 @@ Emira compatibility is not tested but possible with some limitations.
 * **User Definable CANbus Communication:** Connects to the vehicle using `usb2can` and `python-can`. Supports standard CAN and ISO-TP for multi-frame diagnostic messages. User can define target addresses to message, as well as message content (including RTR flag). User can also define addresses to monitor (for response monitoring), and view logged communications in GUI and CSV.
 * **Vehicle Identification:** Retrieves the Vehicle Identification Number (VIN) and identifies the vehicle model, year, market, and relevant ECU/module programs based on an internal database (`vehicles.py`).
 * **Diagnostic Trouble Code (DTC) Management:**
-    * Reads confirmed and pending fault codes from Engine Control Module (ECM), Transmission Control Unit (TCU, if installed), and Anti-lock Braking System (ABS) modules.
+    * Reads confirmed and pending fault codes from Engine Control Module (ECM), Transmission Control Unit (TCU, if installed), and Anti-lock Braking System (ABS, WIP) modules.
     * Supports UDS, KWP2000 (WIP) and OBD-II standard fault codes.
     * Clears fault codes from supported modules.
     * Looks up descriptions for known fault codes (`known_faults.py`).

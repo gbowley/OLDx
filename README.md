@@ -22,7 +22,7 @@ Emira compatibility is not tested but possible with some limitations.
 * **Vehicle Identification:** Retrieves the Vehicle Identification Number (VIN) and identifies the vehicle model, year, market, and relevant ECU/module programs based on an internal database (`vehicles.py`).
 * **Diagnostic Trouble Code (DTC) Management:**
     * Reads confirmed and pending fault codes from Engine Control Module (ECM), Transmission Control Unit (TCU, if installed), and Anti-lock Braking System (ABS) modules.
-    * Supports UDS, KWP2000 (for specific ABS modules), and OBD-II standard fault codes.
+    * Supports UDS, KWP2000 (WIP) and OBD-II standard fault codes.
     * Clears fault codes from supported modules.
     * Looks up descriptions for known fault codes (`known_faults.py`).
 * **Live Data Dashboard:**

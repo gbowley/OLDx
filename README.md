@@ -56,9 +56,10 @@ Emira compatibility is not tested but possible with some limitations.
 
 ## Utilisation
 
-1.  **Connect:** Click the "Connect" button. The status label will indicate if the connection was successful.
-2.  **Identify Vehicle:** Click "Get VIN / Identify". The application will attempt to read the VIN and look up the vehicle details. If automatic reading fails, you may be prompted for manual entry. Vehicle details will populate in the top section and the 'Vehicle Details' tab.
-3.  **Read Faults:** Navigate to the 'Diagnostics & Faults' tab and click "Read All Faults". The application will query the ECM, TCU, and ABS (using appropriate protocols based on identified vehicle info) and display the results (ABS is WIP).
+1. **Launch:** Run launch.bat or open the program folder in VS-Code and launch main_gui.
+2.  **Connect:** Click the "Connect" button. The status label will indicate if the connection was successful.
+3.  **Identify Vehicle:** Click "Get VIN / Identify". The application will attempt to read the VIN and look up the vehicle details. If automatic reading fails, you may be prompted for manual entry. Vehicle details will populate in the top section and the 'Vehicle Details' tab.
+4.  **Read Faults:** Navigate to the 'Diagnostics & Faults' tab and click "Read All Faults". The application will query the ECM, TCU, and ABS (using appropriate protocols based on identified vehicle info) and display the results (ABS is WIP).
 
 ![Interface1](https://github.com/user-attachments/assets/9ab9311b-b381-4dd2-a38d-d0e80f390616)
 
